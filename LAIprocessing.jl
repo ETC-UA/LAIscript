@@ -41,7 +41,10 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
         debug("image read")
         imgarray = convert(Array,img)
         imgblue = Images.blue(img)
-        sum(imgblue .== 1) > 0.005 * length(imgblue) && warn("Image overexposed: $imp")
+        if sum(imgblue .== 1) > 0.005 * length(imgblue)
+            warn("Image overexposed: $imp")
+            warn(setlog, "Image overexposed: $imp")
+        end
         #rotate if in landscape mode
         if size(imgblue,1) > size(imgblue,2); imgblue = transpose(imgblue);end
         push!(imgs,imgblue)
