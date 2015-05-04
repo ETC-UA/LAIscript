@@ -103,9 +103,12 @@ function loopinterior(conn)
 
             if success
                 LAIvalue = LAIres["LAI"]
+                LAIsd = LAIres["LAIsd"]
                 try
                     updatetable(conn, "results", resultsID, :LAI, LAIvalue)
                     info("added LAI to results table for ID $resultsID")
+                    updatetable(conn, "results", resultsID, :LAIsd, LAIsd)
+                    info("added LAIsd to results table for ID $resultsID")        
                 catch upy
                     err("could not add LAI to results table, error: $y")
                 end

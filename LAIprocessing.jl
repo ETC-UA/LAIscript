@@ -1,6 +1,7 @@
 using Images
 using Logging
 using LeafAreaIndex
+import StatsBase
 
 # function Base.show(io::IO, polim::LeafAreaIndex.PolarImage)
 #     println(io, "PolarImage size ($(polim.cl.size1),$(polim.cl.size2))")
@@ -40,6 +41,7 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
         debug("image read")
         imgarray = convert(Array,img)
         imgblue = Images.blue(img)
+        sum(imgblue .== 1) > 0.005 * length(imgblue) && warn("Image overexposed: $imp")
         #rotate if in landscape mode
         if size(imgblue,1) > size(imgblue,2); imgblue = transpose(imgblue);end
         push!(imgs,imgblue)
@@ -67,27 +69,56 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
         warn(setlog,"Projection function for π/2 >2*radius, probably a mistake.")        
     end
     invprojfρθ(ρ) = (-lensa + sqrt(lensa^2+4lensb*ρ)) / 2lensb
+    
+    # Fix likely lens coordinates mistake.
+    if lensx < lensy  
+        lensx, lensy = lensy, lensx
+    end
     lensi=lensy
     lensj=lensx
+
     mycamlens = calibrate(size(imgs[1],1),size(imgs[1],2),lensi,lensj,projfθρ,invprojfρθ)
     
     debug(setlog,"create PolarImages")
     polimgs = [PolarImage(img, mycamlens) for img in imgs]
     
     # @bp
-
-    debug(setlog,"calculate threshold per image")
-    thresh = [threshold(polimg) for polimg in polimgs]
-
-    LAI = LeafAreaIndex #Package shortcut
-    debug(setlog,"calculate clumping per image")
-    clump = [LAI.langxiang45(polimgs[i], thresh[i], 1-LAI.RING_WIDTH,
-                1+LAI.RING_WIDTH) for i=1:length(polimgs)]
+    LAIs = Float64[] #list of LAI
+    function pushLAI!(LAIs, polim, th)
+        clump = langxiang45(polim, th, 0, pi/2)
+        debug(setlog,"Lang Xiang clumping: $clump")
+        LAI = ellips_LUT(polim, th) / clump
+        debug(setlog, "LAI with LUT: $LAI")
+        push!(LAIs, LAI)
+        LAI = ellips_opt(polim, th) / clump
+        debug(setlog, "LAI with optimization: $LAI")
+        push!(LAIs, LAI)
+    end
     
-    debug(setlog,"calculate LAI per image")
-    imgLAI = [clump[i]*zenith57(polimgs[i], thresh[i]) for i=1:length(polimgs)]
+    counter = 0
+    for pim in polimgs
+        counter += 1
+
+        debug(setlog,"Processing with Ridler Calvard for image $counter")
+        th_RC = RidlerCalvard(pim)
+        debug(setlog,"Ridler Calvard threshold: $th_RC")
+        pushLAI!(LAIs, pim, th_RC)
+
+        try # Minimum threshold does not always converge
+            debug(setlog,"Processing with Minimum threshold for image $counter")
+            th_min = minimum_threshhold(pim)
+            debug(setlog,"Minimum threshold: $th_min")
+            pushLAI!(LAIs, pim, th_min)
+        end
+
+        debug(setlog, "Processing with Edge Detection for image $counter")
+        th_edge = edge_threshold(pim)
+        debug(setlog, "Edge Detection threshold for image 1: $th_edge")
+        pushLAI!(LAIs, pim, th_edge)
+    end
     
-    result["LAI"] = mean(imgLAI)
+    result["LAI"] = median(LAIs)
+    result["LAIsd"] = StatsBase.mad(LAIs)
     result["success"] = true    
     return(result)
 end

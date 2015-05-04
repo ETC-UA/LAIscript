@@ -9,7 +9,7 @@ The [Images package](https://github.com/timholy/Images.jl) on Windows might have
 
 Because of a [known bug](https://github.com/quinnj/ODBC.jl/issues/75) with Microsoft SQL, we call the pyodbc Python package through Julia's PyCall. We recommend installing the anaconda Python distribution, which allows to easily install pyodbc in a command window `conda install pyodbc`. 
 
-Besides PyCall and Images, be sure to install the packages Logging, Dates, Humanize and DataFrames
+Besides PyCall and Images, be sure to install the packages Logging, Dates, Humanize, StatsBase and DataFrames
 
 ## Run
 
