@@ -3,9 +3,6 @@ using Logging
 using LeafAreaIndex
 import StatsBase
 
-# function Base.show(io::IO, polim::LeafAreaIndex.PolarImage)
-#     println(io, "PolarImage size ($(polim.cl.size1),$(polim.cl.size2))")
-# end
 
 # using Debug
 # @debug 
