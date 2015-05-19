@@ -21,8 +21,13 @@ function selectcolnames(cursor::PyObject, tablename::ASCIIString)
     pytable = cex[:fetchall]()    
     ASCIIString[collect(obj)[1] for obj in pytable]
 end
-function selecttable(cursor::PyObject, tablename::ASCIIString)
-    cex = cursor[:execute]("SELECT * FROM $tablename")
+function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIString, justone::Bool)
+    # if justone: only select the first valid row
+    if justone
+        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+    else
+        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where")
+    end
     pytable = cex[:fetchall]()
     res = [collect(pytable[i]) for i=1:length(pytable)]
     df = DataFrame()
@@ -50,41 +55,41 @@ cnxn  = pyodbc.connect("DSN=LAI")
 function loopinterior(conn)
 
     cursor = conn[:cursor]()
-    results = selecttable(cursor, "results")
+    results = selecttable(cursor, "results", "processed = 0", true)
     
-    if any(results[:processed] .== false)
-        resultsID = results[findfirst(results[:processed], false), :ID]
+    if size(results)[1] != 0
+        resultsID = results[1,:ID]
         try
             info("detected new processed=false in results table")
 
             debug("reading LAI_App database tables")
-            uploadSet = selecttable(cursor, "uploadSet")
-            cameraSetup = selecttable(cursor, "cameraSetup")
-            images = selecttable(cursor, "images")
-            
-            uploadSetID = results[findfirst(results[:processed], false), :uploadSetID]
+            uploadSetID = results[1,:uploadSetID]
             info("uploadSetID = $uploadSetID")
-
-            uploadSetrow = findfirst(uploadSet[:ID],uploadSetID)
-            if uploadSetrow == 0
+            
+            uploadSet = selecttable(cursor, "uploadSet", "ID = $uploadSetID", true)
+            
+            if size(uploadSet)[1] == 0
                 err("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
                 return()
             end
-            camSetupID = uploadSet[uploadSetrow, :camSetupID]
+            
+            camSetupID = uploadSet[1,:camSetupID]
             info("camSetupID = $camSetupID")
-
-            camrow = findfirst(cameraSetup[:ID], camSetupID)
-            if camrow == 0
+            
+            cameraSetup = selecttable(cursor, "cameraSetup", "ID = $camSetupID", true)
+            if size(cameraSetup)[1] == 0
                 err("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
                 return()
             end
-            lensx = cameraSetup[camrow, :x]
-            lensy = cameraSetup[camrow, :y]
-            lensa = cameraSetup[camrow, :a]
-            lensb = cameraSetup[camrow, :b]
-            imagepaths = images[images[:setID] .== uploadSetID, :dngPath]
+            lensx = cameraSetup[1, :x]
+            lensy = cameraSetup[1, :y]
+            lensa = cameraSetup[1, :a]
+            lensb = cameraSetup[1, :b]
+            
+            images = selecttable(cursor, "images", "setID = $uploadSetID", false)
+            imagepaths = images[:dngPath]
 
             info("start images processing")
             success = false
