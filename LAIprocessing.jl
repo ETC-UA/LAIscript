@@ -6,7 +6,7 @@ import StatsBase
 
 # using Debug
 # @debug 
-function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
+function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logfile)
 
     # Create specific logger per set with debug info
     writecsv(logfile,"") #clear logfile
@@ -19,15 +19,23 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
     # create result dictionary
     result = {"success" => false} 
     
-    imgs = Matrix[]    
+    imgs = Matrix[]
+    #waited_once = false #give more time to DNG converter
     for imp in imagepaths
-        imp
+        
         debug(setlog,"start reading $imp")
         if imp == nothing 
             warn("could not read empty path")
             warn(setlog,"could not read empty path")
             continue
         end
+        
+        if !isfile(imp) #&& !waited_once
+            #waited_once = true
+            #sleep(10)
+            sleep(1)
+        end
+
         if !isfile(imp)
             warn("could not open image path $imp")
             warn(setlog,"could not open image path $imp")
@@ -80,7 +88,12 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,logfile)
     mycamlens = calibrate(size(imgs[1],1),size(imgs[1],2),lensi,lensj,projfθρ,invprojfρθ)
     
     debug(setlog,"create PolarImages")
-    polimgs = [PolarImage(img, mycamlens) for img in imgs]
+    if slope != zero(slope) 
+        myslope = Slope(slope/180*pi, slopeaspect/180*pi)
+        polimgs = [PolarImage(img, mycamlens, myslope) for img in imgs]
+    else
+        polimgs = [PolarImage(img, mycamlens) for img in imgs]
+    end    
     
     # @bp
     LAIs = Float64[] #list of LAI

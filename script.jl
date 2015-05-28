@@ -87,6 +87,9 @@ function loopinterior(conn)
             lensy = cameraSetup[1, :y]
             lensa = cameraSetup[1, :a]
             lensb = cameraSetup[1, :b]
+
+            slope = uploadSet[1,:slope]
+            slopeaspect = uploadSet[1,:slopeAspect]
             
             images = selecttable(cursor, "images", "setID = $uploadSetID", false)
             imagepaths = images[:dngPath]
@@ -95,7 +98,7 @@ function loopinterior(conn)
             success = false
             LAIres = Dict()
             try
-                LAIres = processimages(imagepaths,lensx,lensy,lensa,lensb,tempsetlog)                        
+                LAIres = processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,tempsetlog)                        
                 success = LAIres["success"]
                 info("uploadset $uploadSetID process completed with success: $success")            
             catch y
@@ -136,4 +139,4 @@ function mainloop(conn)
         loopinterior(conn)
     end
 end
-#mainloop(cnxn)
+mainloop(cnxn)
