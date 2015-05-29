@@ -26,7 +26,7 @@ function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIStrin
     if justone
         cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
     else
-        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where")
+        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
     end
     pytable = cex[:fetchall]()
     res = [collect(pytable[i]) for i=1:length(pytable)]
@@ -63,7 +63,16 @@ function loopinterior(conn)
             info("detected new processed=false in results table")
 
             debug("reading LAI_App database tables")
-            uploadSetID = results[1,:uploadSetID]
+            plotSetID = results[1,:plotSetID]
+            info("plotSetID = $plotSetID")
+            plotSet = selecttable(cursor, "plotSets", "ID = $plotSetID", true)
+            if size(plotSet)[1] == 0
+                err("Could not find plotSetID $plotSetID from results table in plotSets table.")
+                updatetable(conn, "results", resultsID, :processed, 1)
+                return()
+            end
+
+            uploadSetID = plotSet[1,:uploadSetID]
             info("uploadSetID = $uploadSetID")
             
             uploadSet = selecttable(cursor, "uploadSet", "ID = $uploadSetID", true)
@@ -91,7 +100,7 @@ function loopinterior(conn)
             slope = uploadSet[1,:slope]
             slopeaspect = uploadSet[1,:slopeAspect]
             
-            images = selecttable(cursor, "images", "setID = $uploadSetID", false)
+            images = selecttable(cursor, "images", "plotSetID = $plotSetID", false)
             imagepaths = images[:dngPath]
 
             info("start images processing")
