@@ -8,6 +8,7 @@ using Dates, Humanize
 Logging.configure(level=DEBUG, 
     filename=joinpath("logs","logjulia_$(today())_$(hour(now()))h$(minute(now())).log"))
 tempsetlog = joinpath("logs", "tempsetlog.log")
+datalog = joinpath("logs", "data.txt")
 
 include("LAIprocessing.jl")
 
@@ -107,7 +108,7 @@ function loopinterior(conn)
             success = false
             LAIres = Dict()
             try
-                LAIres = processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,tempsetlog)                        
+                LAIres = processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,tempsetlog,datalog)                        
                 success = LAIres["success"]
                 info("uploadset $uploadSetID process completed with success: $success")            
             catch y
@@ -117,7 +118,9 @@ function loopinterior(conn)
             updatetable(conn, "results", resultsID, :processed, 1)
             updatetable(conn, "results", resultsID, :succes, ifelse(success,1,0))
             updatetable(conn, "results", resultsID, :resultLog, string(readall(open(tempsetlog))))
-
+            datafile = open(datalog)
+            updatetable(conn, "results", resultsID, :data, readall(datafile))
+            close(datafile)
             if success
                 LAIvalue = LAIres["LAI"]
                 LAIsd = LAIres["LAIsd"]

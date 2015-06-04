@@ -6,12 +6,18 @@ import StatsBase
 
 # using Debug
 # @debug 
-function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logfile)
+function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logfile,datafile)
 
     # Create specific logger per set with debug info
     writecsv(logfile,"") #clear logfile
     setlog = Logger("setlog")
     Logging.configure(setlog, filename=logfile, level=DEBUG)
+    # Create datafile with calculated values and clear it
+    datalog = open(datafile,"w")
+    truncate(datalog,0)
+    close(datalog)
+    datalog = open(datafile,"a+")
+    write(datalog,"filename;Ridler Calvard threshold;Lang Xiang clumping;LAI with optimization;Edge Detection threshold;Lang Xiang clumping;LAI with optimization\n")
     
     debug(setlog,"Start `processimages` with lensx=$lensx, lensy=$lensy, lensa=$lensa and lensb=$lensb")
     debug(setlog,"recieved $(length(imagepaths)) image paths")
@@ -100,11 +106,13 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logf
     function pushLAI!(LAIs, polim, th)
         clump = langxiang45(polim, th, 0, pi/2)
         debug(setlog,"Lang Xiang clumping: $clump")
+        write(datalog,"$clump;")
         LAI = ellips_LUT(polim, th) / clump
         debug(setlog, "LAI with LUT: $LAI")
         push!(LAIs, LAI)
         LAI = ellips_opt(polim, th) / clump
         debug(setlog, "LAI with optimization: $LAI")
+        write(datalog,"$LAI")
         push!(LAIs, LAI)
     end
     
@@ -113,10 +121,12 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logf
         counter += 1
 
         debug(setlog,"Processing with Ridler Calvard for image $counter")
+        write(datalog,"image $counter;")
         th_RC = RidlerCalvard(pim)
         debug(setlog,"Ridler Calvard threshold: $th_RC")
+        write(datalog,"$th_RC;")
         pushLAI!(LAIs, pim, th_RC)
-
+        write(datalog,";")
         try # Minimum threshold does not always converge
             debug(setlog,"Processing with Minimum threshold for image $counter")
             th_min = minimum_threshhold(pim)
@@ -126,12 +136,15 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logf
 
         debug(setlog, "Processing with Edge Detection for image $counter")
         th_edge = edge_threshold(pim)
-        debug(setlog, "Edge Detection threshold for image 1: $th_edge")
+        debug(setlog, "Edge Detection threshold for image $counter: $th_edge")
+        write(datalog,"$th_edge;")
         pushLAI!(LAIs, pim, th_edge)
+        write(datalog,"\n")
     end
     
     result["LAI"] = median(LAIs)
     result["LAIsd"] = StatsBase.mad(LAIs)
     result["success"] = true    
+    close(datalog)
     return(result)
 end
