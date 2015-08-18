@@ -83,6 +83,17 @@ function loopinterior(conn)
                 updatetable(conn, "results", resultsID, :processed, 1)
                 return()
             end
+
+            plotID = plotSet[1,:plotID]
+            info("plotID = $plotID")
+
+            plot = selecttable(cursor, "plots", "ID = $plotID", true)
+
+            if size(plot)[1] == 0
+                err("Could not find plotID $plotID from plots table in uploadSet table.")
+                updatetable(conn, "results", resultsID, :processed, 1)
+                return()
+            end
             
             camSetupID = uploadSet[1,:camSetupID]
             info("camSetupID = $camSetupID")
@@ -98,8 +109,10 @@ function loopinterior(conn)
             lensa = cameraSetup[1, :a]
             lensb = cameraSetup[1, :b]
 
-            slope = uploadSet[1,:slope]
-            slopeaspect = uploadSet[1,:slopeAspect]
+            slope = plot[1,:slope]
+            slopeaspect = plot[1,:slopeAspect]
+            info("slope = $slope")
+            info("slopeaspect = $slopeaspect")
             
             images = selecttable(cursor, "images", "plotSetID = $plotSetID", false)
             imagepaths = images[:dngPath]

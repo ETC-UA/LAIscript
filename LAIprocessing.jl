@@ -39,7 +39,7 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logf
         if !isfile(imp) #&& !waited_once
             #waited_once = true
             #sleep(10)
-            sleep(1)
+            sleep(10)
         end
 
         if !isfile(imp)
