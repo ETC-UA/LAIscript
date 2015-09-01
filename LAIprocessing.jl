@@ -121,7 +121,7 @@ function processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,logf
         counter += 1
 
         debug(setlog,"Processing with Ridler Calvard for image $counter")
-        write(datalog,"image $counter;")
+        write(datalog,"$(basename(imagepaths[counter]));")
         th_RC = RidlerCalvard(pim)
         debug(setlog,"Ridler Calvard threshold: $th_RC")
         write(datalog,"$th_RC;")
