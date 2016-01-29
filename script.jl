@@ -1,50 +1,49 @@
 using PyCall, DataFrames
-
 using Logging
-using Dates, Humanize
 
 # Setup Logging
 !isdir("logs") && mkdir("logs")
-Logging.configure(level=DEBUG, 
-    filename=joinpath("logs","logjulia_$(today())_$(hour(now()))h$(minute(now())).log"))
+Logging.configure(level=DEBUG, filename=joinpath("logs", 
+    "logjulia_$(Dates.today())_$(Dates.hour(now()))h$(Dates.minute(now())).log"))
 tempsetlog = joinpath("logs", "tempsetlog.log")
 datalog = joinpath("logs", "data.txt")
 
 include("LAIprocessing.jl")
 
 # check available memory
-mem() = datasize(1000*int(split(readall(`wmic os get FreePhysicalMemory`))[2]))
+#import Humanize
+#mem() = Humanize.datasize(1000*parse(Int, split(readall(`wmic os get FreePhysicalMemory`))[2]))
 
 # convenience functions for quering the database
 function selectcolnames(cursor::PyObject, tablename::ASCIIString)
     sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$(tablename)'"
-    cex = cursor[:execute](sql)
-    pytable = cex[:fetchall]()    
+    cex = cursor.execute(sql)
+    pytable = cex.fetchall()
     ASCIIString[collect(obj)[1] for obj in pytable]
 end
 function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIString, justone::Bool)
     # if justone: only select the first valid row
     if justone
-        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor.execute("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
     else
-        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor.execute("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
     end
-    pytable = cex[:fetchall]()
-    res = [collect(pytable[i]) for i=1:length(pytable)]
+    pytable = cex.fetchall()
+    res = map(collect, pytable)
     df = DataFrame()
     # convert string to Symbol for DataFrame indexing
     colnames = Symbol[selectcolnames(cursor, tablename)...]
-    for col = 1:length(colnames)
-        colvals = [res[row][col] for row = 1:length(res)]
+    for col in eachindex(colnames)
+        colvals = [res[row][col] for row in eachindex(res)]
         df[colnames[col]] = colvals
     end
     df
 end
 function updatetable(conn::PyObject, tablename::ASCIIString, ID::Int, columnname::Symbol,newvalue)
-    cursor = conn[:cursor]()
+    cursor = conn.cursor()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
-    cex = cursor[:execute](sql)
-    conn[:commit]()
+    cex = cursor.execute(sql)
+    conn.commit()
     nothing
 end
 
@@ -55,25 +54,26 @@ cnxn  = pyodbc.connect("DSN=LAI")
 #loop interior (separate function for testing)
 function loopinterior(conn)
 
-    cursor = conn[:cursor]()
+    cursor = conn.cursor()
     results = selecttable(cursor, "results", "processed = 0", true)
     
     if size(results)[1] != 0
-        resultsID = results[1,:ID]
+        resultsID = results[1, :ID]
         try
             info("detected new processed=false in results table")
 
             debug("reading LAI_App database tables")
-            plotSetID = results[1,:plotSetID]
+            plotSetID = results[1, :plotSetID]
             info("plotSetID = $plotSetID")
+
             plotSet = selecttable(cursor, "plotSets", "ID = $plotSetID", true)
             if size(plotSet)[1] == 0
                 err("Could not find plotSetID $plotSetID from results table in plotSets table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
-                return()
+                return
             end
 
-            uploadSetID = plotSet[1,:uploadSetID]
+            uploadSetID = plotSet[1, :uploadSetID]
             info("uploadSetID = $uploadSetID")
             
             uploadSet = selecttable(cursor, "uploadSet", "ID = $uploadSetID", true)
@@ -81,10 +81,10 @@ function loopinterior(conn)
             if size(uploadSet)[1] == 0
                 err("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
-                return()
+                return
             end
 
-            plotID = plotSet[1,:plotID]
+            plotID = plotSet[1, :plotID]
             info("plotID = $plotID")
 
             plot = selecttable(cursor, "plots", "ID = $plotID", true)
@@ -92,25 +92,26 @@ function loopinterior(conn)
             if size(plot)[1] == 0
                 err("Could not find plotID $plotID from plots table in uploadSet table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
-                return()
+                return
             end
             
-            camSetupID = uploadSet[1,:camSetupID]
+            camSetupID = uploadSet[1, :camSetupID]
             info("camSetupID = $camSetupID")
             
             cameraSetup = selecttable(cursor, "cameraSetup", "ID = $camSetupID", true)
             if size(cameraSetup)[1] == 0
                 err("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
                 updatetable(conn, "results", resultsID, :processed, 1)
-                return()
+                return
             end
+
             lensx = cameraSetup[1, :x]
             lensy = cameraSetup[1, :y]
             lensa = cameraSetup[1, :a]
             lensb = cameraSetup[1, :b]
 
-            slope = plot[1,:slope]
-            slopeaspect = plot[1,:slopeAspect]
+            slope = plot[1, :slope]
+            slopeaspect = plot[1, :slopeAspect]
             info("slope = $slope")
             info("slopeaspect = $slopeaspect")
             
