@@ -8,6 +8,10 @@ Logging.configure(level=DEBUG, filename=joinpath("logs",
 tempsetlog = joinpath("logs", "tempsetlog.log")
 datalog = joinpath("logs", "data.txt")
 
+#addprocs before including LAIprocessing.jl !
+# 9 processors ideal because typical size of image set
+addprocs(max(CPU_CORES, 9) - nprocs())
+
 include("LAIprocessing.jl")
 
 # check available memory
@@ -109,12 +113,15 @@ function loopinterior(conn)
             lensy = cameraSetup[1, :y]
             lensa = cameraSetup[1, :a]
             lensb = cameraSetup[1, :b]
+            lensρ = cameraSetup[1, :maxRadius]
+            lensparams = (lensx, lensy, lensa, lensb, lensρ)
+            info("lens parameters: $lensparams")
 
             slope = plot[1, :slope]
             slopeaspect = plot[1, :slopeAspect]
-            info("slope = $slope")
-            info("slopeaspect = $slopeaspect")
-            
+            slopeparams = (slope, slopeaspect)
+            info("slope parameters: $slopeparams")
+
             images = selecttable(cursor, "images", "plotSetID = $plotSetID", false)
             imagepaths = images[:dngPath]
 
@@ -122,7 +129,7 @@ function loopinterior(conn)
             success = false
             LAIres = Dict()
             try
-                LAIres = processimages(imagepaths,lensx,lensy,lensa,lensb,slope,slopeaspect,tempsetlog,datalog)                        
+                LAIres = processimages(imagepaths,lensparams,slopeparams,tempsetlog,datalog)                        
                 success = LAIres["success"]
                 info("uploadset $uploadSetID process completed with success: $success")            
             catch y
