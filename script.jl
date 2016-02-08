@@ -123,7 +123,7 @@ function loopinterior(conn)
             info("slope parameters: $slopeparams")
 
             images = selecttable(cursor, "images", "plotSetID = $plotSetID", false)
-            imagepaths = images[:dngPath]
+            imagepaths = images[:path]
 
             info("start images processing")
             success = false
