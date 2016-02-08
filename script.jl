@@ -21,18 +21,18 @@ include("LAIprocessing.jl")
 # convenience functions for quering the database
 function selectcolnames(cursor::PyObject, tablename::ASCIIString)
     sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$(tablename)'"
-    cex = cursor.execute(sql)
-    pytable = cex.fetchall()
+    cex = cursor[:execute](sql)
+    pytable = cex[:fetchall]()
     ASCIIString[collect(obj)[1] for obj in pytable]
 end
 function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIString, justone::Bool)
     # if justone: only select the first valid row
     if justone
-        cex = cursor.execute("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
     else
-        cex = cursor.execute("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
     end
-    pytable = cex.fetchall()
+    pytable = cex[:fetchall]()
     res = map(collect, pytable)
     df = DataFrame()
     # convert string to Symbol for DataFrame indexing
@@ -44,10 +44,10 @@ function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIStrin
     df
 end
 function updatetable(conn::PyObject, tablename::ASCIIString, ID::Int, columnname::Symbol,newvalue)
-    cursor = conn.cursor()
+    cursor = conn[:cursor]()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
-    cex = cursor.execute(sql)
-    conn.commit()
+    cex = cursor[:execute](sql)
+    conn[:commit]()
     nothing
 end
 
@@ -58,7 +58,7 @@ cnxn  = pyodbc.connect("DSN=LAI")
 #loop interior (separate function for testing)
 function loopinterior(conn)
 
-    cursor = conn.cursor()
+    cursor = conn[:cursor]()
     results = selecttable(cursor, "results", "processed = 0", true)
     
     if size(results)[1] != 0
