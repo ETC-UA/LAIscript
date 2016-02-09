@@ -89,6 +89,7 @@ using Images #also imports FileIO for reading jpg
         elseif ext in [".jpg",".jpeg", ".tiff"]
             img = FileIO.load(imp)
             imgblue = Images.blue(img)
+            gamma_decode!(imgblue)
         else
             warn("image has unknown extension at $imp")
             #warn(setlog,"$i image has unknown extension at $imp")
@@ -135,6 +136,16 @@ using Images #also imports FileIO for reading jpg
         end
         img
     end
+
+    "Gamma decode a gray image taken from single channel in sRGB colorspace."
+    function gamma_decode!(A::AbstractMatrix)
+    @fastmath for j = 1:size(A, 2)
+        for i = 1:size(A, 1)
+            # See https://en.wikipedia.org/wiki/SRGB
+            A[i,j] = A[i,j] <= 0.04045 ? A[i,j]/12.92 : ((A[i,j]+0.055)/1.055)^2.4
+        end
+    end
+end
 end
 
 function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
