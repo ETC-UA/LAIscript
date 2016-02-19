@@ -148,6 +148,28 @@ using Images #also imports FileIO for reading jpg
 end
 end
 
+function processcenterfile(dfcenter, height, width, logfile)
+    writecsv(logfile, "") #clear logfile
+    setlog = Logger("setlog")
+    Logging.configure(setlog, filename=logfile, level=DEBUG)
+    
+    debug(setlog, "Start calibrate center ")
+    calres = calibrate_center(dfcenter, height, width)
+    debug(setlog, "calibration result: $calres")
+    return (calres)
+end
+
+function processprojfile(dfproj, height, width, logfile)
+    writecsv(logfile, "") #clear logfile
+    setlog = Logger("setlog")
+    Logging.configure(setlog, filename=logfile, level=DEBUG)
+    
+    debug(setlog, "Start calibrate projection ")
+    calres = calibrate_projfun(dfproj, height, width)
+    debug(setlog, "calibration result: $calres")
+    return (calres)
+end
+
 function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     N = length(imagepaths)
 

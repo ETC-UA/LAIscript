@@ -59,6 +59,50 @@ cnxn  = pyodbc.connect("DSN=LAI")
 function loopinterior(conn)
 
     cursor = conn[:cursor]()
+
+    cameraSetup = selecttable(cursor, "cameraSetup", " processed = 0 and pathCenter is not null ", true)
+    
+    if size(cameraSetup)[1] != 0
+        setupID = cameraSetup[1, :ID]
+        try
+            info("detected new processed=false in cameraSetup table")
+            
+            pathCenter = cameraSetup[1, :pathCenter]
+            pathProj = cameraSetup[1, :pathProj]
+            width = cameraSetup[1, :width]
+            height = cameraSetup[1, :height]
+
+            success = false
+            LAIres = Dict()
+            try
+                df = readtable(pathCenter, names=[:x, :y, :circle])
+                lensx, lensy = processcenterfile(df, height, width, tempsetlog)
+                info("result x: $lensx y:$lensy")
+                updatetable(conn, "cameraSetup", setupID, :x, lensx)
+                updatetable(conn, "cameraSetup", setupID, :y, lensy)
+                df = readtable(pathProj, names=[:cm, :px, :H, :pos])
+                lensa, lensb = processprojfile(df, height, width, tempsetlog)
+                info("result a: $lensa b:$lensb")
+                updatetable(conn, "cameraSetup", setupID, :a, lensa)
+                updatetable(conn, "cameraSetup", setupID, :b, lensb)                
+            catch y
+                err("Could not process center calibration: $setupID with error $y")
+            end
+
+            updatetable(conn, "cameraSetup", setupID, :processed, 1)
+            
+            
+        catch y
+            err("caugth general error in interior loop: $y")
+        finally
+            updatetable(conn, "cameraSetup", setupID, :processed, 1)
+        end
+    else
+    end
+
+
+
+
     results = selecttable(cursor, "results", "processed = 0", true)
     
     if size(results)[1] != 0
