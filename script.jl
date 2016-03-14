@@ -60,7 +60,7 @@ function loopinterior(conn)
 
     cursor = conn[:cursor]()
 
-    cameraSetup = selecttable(cursor, "cameraSetup", " processed = 0 and pathCenter is not null ", true)
+    cameraSetup = selecttable(cursor, "cameraSetup", " processed = 0 and pathCenter is not null and width is not null and height is not null", true)
     
     if size(cameraSetup)[1] != 0
         setupID = cameraSetup[1, :ID]
@@ -86,7 +86,7 @@ function loopinterior(conn)
                 updatetable(conn, "cameraSetup", setupID, :a, lensa)
                 updatetable(conn, "cameraSetup", setupID, :b, lensb)                
             catch y
-                err("Could not process center calibration: $setupID with error $y")
+                err("Could not process calibration: $setupID with error $y")
             end
 
             updatetable(conn, "cameraSetup", setupID, :processed, 1)
