@@ -1,4 +1,5 @@
-using Logging
+using Logging, LeafAreaIndex, ParallelDataTransfer
+using Images #also imports FileIO for reading jpg
 import StatsBase, JLD
 
 const CAMERALENSES = "CameraLenses.jld"
@@ -7,26 +8,11 @@ if !isfile(CAMERALENSES)
     close(JLD.jldopen(CAMERALENSES,"w"))
 end
 
-"sends variables to other processors"
-function sendto(p::Int; args...)
-    for (nm, val) in args
-        @spawnat(p, eval(Main, Expr(:(=), nm, val)))
-    end
-end
-function sendto(ps::Vector{Int}; args...)
-    for p in ps
-       sendto(p; args...)
-    end
-end
-
-# Load required functions and packages on each processor
-using LeafAreaIndex
-using Images #also imports FileIO for reading jpg
 
 @everywhere begin
     #Lg = Logging
 
-    abstract LAIresultInfo
+    abstract type LAIresultInfo; end
     "Convenience type to hold results from LAI calculation."
     type LAIresult <: LAIresultInfo
         imagepath::AbstractString
