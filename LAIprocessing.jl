@@ -1,32 +1,18 @@
-using Logging
-import StatsBase, JLD
+using Logging, LeafAreaIndex, ParallelDataTransfer, CoordinateTransformations
+# TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
+using Images #also imports FileIO for reading jpg
+import StatsBase, JLD2, FileIO
 
-const CAMERALENSES = "CameraLenses.jld"
+const CAMERALENSES = "CameraLenses.jld2"
 if !isfile(CAMERALENSES)
     warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
-    close(JLD.jldopen(CAMERALENSES,"w"))
+    close(JLD2.jldopen(CAMERALENSES,"w"))
 end
-
-"sends variables to other processors"
-function sendto(p::Int; args...)
-    for (nm, val) in args
-        @spawnat(p, eval(Main, Expr(:(=), nm, val)))
-    end
-end
-function sendto(ps::Vector{Int}; args...)
-    for p in ps
-       sendto(p; args...)
-    end
-end
-
-# Load required functions and packages on each processor
-using LeafAreaIndex
-using Images #also imports FileIO for reading jpg
 
 @everywhere begin
     #Lg = Logging
 
-    abstract LAIresultInfo
+    abstract type LAIresultInfo; end
     "Convenience type to hold results from LAI calculation."
     type LAIresult <: LAIresultInfo
         imagepath::AbstractString
@@ -44,14 +30,14 @@ using Images #also imports FileIO for reading jpg
         # on each processor.
         #@show "before logger"
         #baselog, logext = splitext(mainlogfile)
-        #@show locallogfile = baselog * string(myid()) * logext
+        #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
         #@show locallog = Lg.Logger("locallog"*string(myid()))
         #Lg.configure(locallog, filename=locallogfile, level=DEBUG)
         try
-            #@show i = myid() # ID of current processor            
-            #Lg.debug(locallog, "start getLAI on $imagepath")            
+            #i = myid() # ID of current processor            
+            #@show ("start getLAI on $imagepath")            
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
             #debug(setlog, "$i create PolarImage")
@@ -82,31 +68,27 @@ using Images #also imports FileIO for reading jpg
         ext = lowercase(splitext(imp)[end])
 
         if ext in LeafAreaIndex.RAW_EXT
-            img = LeafAreaIndex.rawblueread(imp)
-            #@show img[1]
-            # no need to keep Gray color or Images info
-            imgblue = Images.data(reinterpret(FixedPointNumbers.UFixed16, img))
+            imgblue = LeafAreaIndex.rawblueread(imp)        
         elseif ext in [".jpg",".jpeg", ".tiff"]
             img = FileIO.load(imp)
-            imgblue = Images.blue(img)
+            imgblue = Images.blue.(img)
             gamma_decode!(imgblue)
         else
             warn("image has unknown extension at $imp")
             #warn(setlog,"$i image has unknown extension at $imp")
         end
-        # images usually stored in horizontal mode, but LeafAreaIndex expects row-major Matrix
-        imgblue = transpose(imgblue)
         #debug(setlog, "image read")
 
         #@show "check overexposure"
         if sum(imgblue .== 1) > 0.005 * length(imgblue)
-            #warn("Image overexposed: $imp")
+            warn("Image overexposed: $imp")
             #warn(setlog, "$i Image overexposed: $imp")
         end
 
         #rotate if in portrait mode
         if size(imgblue,1) > size(imgblue,2)
-            if LeafAreaIndex.slope(sl) != zero(LeafAreaIndex.slope(sl))                
+            slope = LeafAreaIndex.params(sl)[1]
+            if slope != zero(slope)                
                 #warn(setlog, "$i image with slope in portrait mode, don't know which way to turn: $imp")
                 error("image with slope in portrait mode, don't know which way to turn: $imp")
             end
@@ -116,36 +98,22 @@ using Images #also imports FileIO for reading jpg
         return imgblue
     end
 
-    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."
     # Rotate sometimes because currently LeafAreaIndex expects landscape *in memory*.
-    function rotate90(img::AbstractMatrix; clockwise=true)
-        img = transpose(img)
-        if clockwise
-            # flip up-down
-            for i = 1:size(img, 2)
-                img[:, i] = reverse(img[:, i])
-            end
-        else #counterclockwise
-            # flip left-right
-            flip = similar(img)
-            for i = 1:size(img, 2)
-                flipcol = size(img,2) + 1 - i
-                flip[:, flipcol] = img[:, 1]
-            end
-            img = flip
-        end
-        img
+    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."    
+    function rotate90(img; clockwise=true)
+        transf = recenter(RotMatrix(ifelse(clockwise, 1, -1)*pi/2), center(img)) 
+        img = warp(img, transf)
+        #fix for images.jl #717
+        return parent(img)
     end
 
     "Gamma decode a gray image taken from single channel in sRGB colorspace."
     function gamma_decode!(A::AbstractMatrix)
-    @fastmath for j = 1:size(A, 2)
-        for i = 1:size(A, 1)
+        @fastmath for i in eachindex(A)
             # See https://en.wikipedia.org/wiki/SRGB
-            A[i,j] = A[i,j] <= 0.04045 ? A[i,j]/12.92 : ((A[i,j]+0.055)/1.055)^2.4
+            A[i] = A[i] <= 0.04045 ? A[i]/12.92 : ((A[i]+0.055)/1.055)^2.4
         end
     end
-end
 end
 
 function processcenterfile(dfcenter, height, width, logfile)
@@ -183,7 +151,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     debug(setlog, "received $N image paths")
     
     # create result dictionary
-    result = {"success" => false} 
+    result = Dict("success" => false)
     
     debug(setlog,"create slope object")
     slope, slopeaspect = slopeparams
@@ -238,15 +206,13 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
     @assert isfile(CAMERALENSES)
 
     lenshash = string(hash( (imgsize,lensparams) ))  #create unique cameralens identifier
-    jld = JLD.jldopen(CAMERALENSES, "r")
-    past_hashes = names(jld)
-    close(jld)
+    past_hashes = JLD2.jldopen(CAMERALENSES, "r") do file
+         keys(file)
+    end
 
     if lenshash in past_hashes
-        jld = JLD.jldopen(CAMERALENSES, "r")
         debug(setlog, "previous calibration found for hash $lenshash")
-        mycamlens = read(jld, lenshash)
-        close(jld)
+        mycamlens = FileIO.load(CAMERALENSES, lenshash)
     else
         lensx, lensy, lensa, lensb, lensρ = lensparams
         # Generic functions can't serialize, so need anonymous function to save
@@ -266,8 +232,8 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         debug(setlog,"calibrate new mycamlens")
         mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
         debug(setlog,"calibrated new mycamlens, now save to file")
-        JLD.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
-            write(file, lenshash, mycamlens)
+        JLD2.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
+            file[lenshash] = mycamlens
         end
         debug(setlog,"new mycamlens saved to file: $lenshash")
     end
