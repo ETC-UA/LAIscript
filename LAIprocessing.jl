@@ -25,35 +25,35 @@ end
     end
 
     function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens, 
-                    sl::LeafAreaIndex.SlopeInfo)#, mainlogfile::AbstractString)        
+                    sl::LeafAreaIndex.SlopeInfo, setlog)#, mainlogfile::AbstractString)        
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
         #@show "before logger"
         #baselog, logext = splitext(mainlogfile)
-        #@show locallogfile = baselog * string(myid()) * logext
+        #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
         #@show locallog = Lg.Logger("locallog"*string(myid()))
         #Lg.configure(locallog, filename=locallogfile, level=DEBUG)
         try
-            #@show i = myid() # ID of current processor            
-            #Lg.debug(locallog, "start getLAI on $imagepath")            
+            i = myid() # ID of current processor            
+            debug(setlog, "start getLAI on $imagepath")            
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
-            #debug(setlog, "$i create PolarImage")
+            debug(setlog, "$i create PolarImage")
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
-            #debug(setlog, "$i PolarImage created")
+            debug(setlog, "$i PolarImage created")
             thresh= LeafAreaIndex.threshold(polim)
-            #debug(setlog,"$i threshold: $thresh")        
+            debug(setlog,"$i threshold: $thresh")        
             LAIe  = LeafAreaIndex.inverse(polim, thresh)
-            #debug(setlog,"$i effective LAI: $LAIe")
+            debug(setlog,"$i effective LAI: $LAIe")
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
-            #debug(setlog,"$i clumping: $clump")
+            debug(setlog,"$i clumping: $clump")
             LAI = LAIe / clump
-            #debug(setlog,"$i LAI: $LAI")            
+            debug(setlog,"$i LAI: $LAI")            
             return LAIresult(imagepath, LAI, thresh, clump)
         catch lai_err
-            #debug(setlog,"$i error: $lai_err")
+            debug(setlog,"$i error: $lai_err")
             #@show lai_err
             return NoLAIresult(lai_err)
         end
@@ -83,7 +83,7 @@ end
 
         #@show "check overexposure"
         if sum(imgblue .== 1) > 0.005 * length(imgblue)
-            #warn("Image overexposed: $imp")
+            warn("Image overexposed: $imp")
             #warn(setlog, "$i Image overexposed: $imp")
         end
 
@@ -171,11 +171,11 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
 
     debug(setlog,"parallel process getLAI")
     #needed for anon functions in CameraLens 
-    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope)
+    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope, setlog=setlog)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
     #remotecall_fetch(2, println, mycamlens)
 
-    resultset = pmap(x->getLAI(x, mycamlens, myslope), imagepaths)
+    resultset = pmap(x->getLAI(x, mycamlens, myslope, setlog), imagepaths)
     debug(setlog,"parallel process done")
 
     # Create datafile with calculated values
