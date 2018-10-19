@@ -68,13 +68,10 @@ end
         ext = lowercase(splitext(imp)[end])
 
         if ext in LeafAreaIndex.RAW_EXT
-            img = LeafAreaIndex.rawblueread(imp)
-            #@show img[1]
-            # no need to keep Gray color or Images info
-            imgblue = Images.data(reinterpret(FixedPointNumbers.UFixed16, img))
+            imgblue = LeafAreaIndex.rawblueread(imp)        
         elseif ext in [".jpg",".jpeg", ".tiff"]
             img = FileIO.load(imp)
-            imgblue = Images.blue(img)
+            imgblue = Images.blue.(img)
             gamma_decode!(imgblue)
         else
             warn("image has unknown extension at $imp")
