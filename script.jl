@@ -57,7 +57,6 @@ end
 
 
 function process_calibration(conn)
-
     cursor = conn[:cursor]()
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
     
