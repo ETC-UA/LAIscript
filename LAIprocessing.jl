@@ -1,4 +1,5 @@
 using Logging, LeafAreaIndex, ParallelDataTransfer
+# TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
 using Images #also imports FileIO for reading jpg
 import StatsBase, JLD
 
@@ -7,7 +8,6 @@ if !isfile(CAMERALENSES)
     warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
     close(JLD.jldopen(CAMERALENSES,"w"))
 end
-
 
 @everywhere begin
     #Lg = Logging
@@ -169,7 +169,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     debug(setlog, "received $N image paths")
     
     # create result dictionary
-    result = {"success" => false} 
+    result = Dict("success" => false)
     
     debug(setlog,"create slope object")
     slope, slopeaspect = slopeparams

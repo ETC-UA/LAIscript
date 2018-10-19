@@ -10,7 +10,7 @@ datalog = joinpath("logs", "data.txt")
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-addprocs(max(CPU_CORES, 9) - nprocs())
+addprocs(max(Sys.CPU_CORES, 9) - nprocs())
 
 include("LAIprocessing.jl")
 
@@ -19,13 +19,13 @@ include("LAIprocessing.jl")
 #mem() = Humanize.datasize(1000*parse(Int, split(readall(`wmic os get FreePhysicalMemory`))[2]))
 
 # convenience functions for quering the database
-function selectcolnames(cursor::PyObject, tablename::ASCIIString)
+function selectcolnames(cursor::PyObject, tablename::String)
     sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$(tablename)'"
     cex = cursor[:execute](sql)
     pytable = cex[:fetchall]()
-    ASCIIString[collect(obj)[1] for obj in pytable]
+    String[collect(obj)[1] for obj in pytable]
 end
-function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIString, justone::Bool)
+function selecttable(cursor::PyObject, tablename::String, where::String, justone::Bool)
     # if justone: only select the first valid row
     if justone
         cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
@@ -43,7 +43,7 @@ function selecttable(cursor::PyObject, tablename::ASCIIString, where::ASCIIStrin
     end
     df
 end
-function updatetable(conn::PyObject, tablename::ASCIIString, ID::Int, columnname::Symbol,newvalue)
+function updatetable(conn::PyObject, tablename::String, ID::Int, columnname::Symbol,newvalue)
     cursor = conn[:cursor]()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
     cex = cursor[:execute](sql)
@@ -53,7 +53,7 @@ end
 
 # Connect to the database
 @pyimport pyodbc
-cnxn  = pyodbc.connect("DSN=LAI")
+#cnxn  = pyodbc.connect("DSN=LAI")
 
 #loop interior (separate function for testing)
 function loopinterior(conn)
@@ -216,4 +216,4 @@ function mainloop(conn)
         loopinterior(conn)
     end
 end
-mainloop(cnxn)
+#mainloop(cnxn)
