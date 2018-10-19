@@ -36,21 +36,21 @@ end
         #@show locallog = Lg.Logger("locallog"*string(myid()))
         #Lg.configure(locallog, filename=locallogfile, level=DEBUG)
         try
-            i = myid() # ID of current processor            
-            debug(setlog, "start getLAI on $imagepath")            
+            #i = myid() # ID of current processor            
+            #debug(setlog, "start getLAI on $imagepath")            
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
-            debug(setlog, "$i create PolarImage")
+            #debug(setlog, "$i create PolarImage")
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
-            debug(setlog, "$i PolarImage created")
+            #debug(setlog, "$i PolarImage created")
             thresh= LeafAreaIndex.threshold(polim)
-            debug(setlog,"$i threshold: $thresh")        
+            #debug(setlog,"$i threshold: $thresh")        
             LAIe  = LeafAreaIndex.inverse(polim, thresh)
-            debug(setlog,"$i effective LAI: $LAIe")
+            #debug(setlog,"$i effective LAI: $LAIe")
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
-            debug(setlog,"$i clumping: $clump")
+            #debug(setlog,"$i clumping: $clump")
             LAI = LAIe / clump
-            debug(setlog,"$i LAI: $LAI")            
+            #debug(setlog,"$i LAI: $LAI")            
             return LAIresult(imagepath, LAI, thresh, clump)
         catch lai_err
             debug(setlog,"$i error: $lai_err")
@@ -171,7 +171,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
 
     debug(setlog,"parallel process getLAI")
     #needed for anon functions in CameraLens 
-    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope, setlog=setlog)
+    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
     #remotecall_fetch(2, println, mycamlens)
 
