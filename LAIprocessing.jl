@@ -6,7 +6,7 @@ import StatsBase, JLD2, FileIO
 const CAMERALENSES = "CameraLenses.jld2"
 if !isfile(CAMERALENSES)
     warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
-    close(JLD.jldopen(CAMERALENSES,"w"))
+    close(JLD2.jldopen(CAMERALENSES,"w"))
 end
 
 @everywhere begin
