@@ -1,4 +1,4 @@
-using Logging, LeafAreaIndex, ParallelDataTransfer
+using Logging, LeafAreaIndex, ParallelDataTransfer, CoordinateTransformations
 # TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
 using Images #also imports FileIO for reading jpg
 import StatsBase, JLD
@@ -102,36 +102,22 @@ end
         return imgblue
     end
 
-    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."
     # Rotate sometimes because currently LeafAreaIndex expects landscape *in memory*.
-    function rotate90(img::AbstractMatrix; clockwise=true)
-        img = transpose(img)
-        if clockwise
-            # flip up-down
-            for i = 1:size(img, 2)
-                img[:, i] = reverse(img[:, i])
-            end
-        else #counterclockwise
-            # flip left-right
-            flip = similar(img)
-            for i = 1:size(img, 2)
-                flipcol = size(img,2) + 1 - i
-                flip[:, flipcol] = img[:, 1]
-            end
-            img = flip
-        end
-        img
+    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."    
+    function rotate90(img; clockwise=true)
+        transf = recenter(RotMatrix(ifelse(clockwise, 1, -1)*pi/2), center(img)) 
+        img = warp(img, transf)
+        #fix for images.jl #717
+        return parent(img)
     end
 
     "Gamma decode a gray image taken from single channel in sRGB colorspace."
     function gamma_decode!(A::AbstractMatrix)
-    @fastmath for j = 1:size(A, 2)
-        for i = 1:size(A, 1)
+        @fastmath for i in eachindex(A)
             # See https://en.wikipedia.org/wiki/SRGB
-            A[i,j] = A[i,j] <= 0.04045 ? A[i,j]/12.92 : ((A[i,j]+0.055)/1.055)^2.4
+            A[i] = A[i] <= 0.04045 ? A[i]/12.92 : ((A[i]+0.055)/1.055)^2.4
         end
     end
-end
 end
 
 function processcenterfile(dfcenter, height, width, logfile)
