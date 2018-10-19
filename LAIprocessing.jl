@@ -25,7 +25,7 @@ end
     end
 
     function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens, 
-                    sl::LeafAreaIndex.SlopeInfo, setlog)#, mainlogfile::AbstractString)        
+                    sl::LeafAreaIndex.SlopeInfo)#, mainlogfile::AbstractString)        
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
         #@show "before logger"
@@ -37,7 +37,7 @@ end
         #Lg.configure(locallog, filename=locallogfile, level=DEBUG)
         try
             #i = myid() # ID of current processor            
-            #debug(setlog, "start getLAI on $imagepath")            
+            #@show ("start getLAI on $imagepath")            
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
             #debug(setlog, "$i create PolarImage")
@@ -53,7 +53,7 @@ end
             #debug(setlog,"$i LAI: $LAI")            
             return LAIresult(imagepath, LAI, thresh, clump)
         catch lai_err
-            debug(setlog,"$i error: $lai_err")
+            #debug(setlog,"$i error: $lai_err")
             #@show lai_err
             return NoLAIresult(lai_err)
         end
@@ -77,8 +77,6 @@ end
             warn("image has unknown extension at $imp")
             #warn(setlog,"$i image has unknown extension at $imp")
         end
-        # images usually stored in horizontal mode, but LeafAreaIndex expects row-major Matrix
-        imgblue = transpose(imgblue)
         #debug(setlog, "image read")
 
         #@show "check overexposure"
@@ -89,7 +87,8 @@ end
 
         #rotate if in portrait mode
         if size(imgblue,1) > size(imgblue,2)
-            if LeafAreaIndex.slope(sl) != zero(LeafAreaIndex.slope(sl))                
+            slope = LeafAreaIndex.params(sl)[1]
+            if slope != zero(slope)                
                 #warn(setlog, "$i image with slope in portrait mode, don't know which way to turn: $imp")
                 error("image with slope in portrait mode, don't know which way to turn: $imp")
             end
@@ -175,7 +174,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
     #remotecall_fetch(2, println, mycamlens)
 
-    resultset = pmap(x->getLAI(x, mycamlens, myslope, setlog), imagepaths)
+    resultset = pmap(x->getLAI(x, mycamlens, myslope), imagepaths)
     debug(setlog,"parallel process done")
 
     # Create datafile with calculated values
