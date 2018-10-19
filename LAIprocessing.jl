@@ -1,9 +1,9 @@
 using Logging, LeafAreaIndex, ParallelDataTransfer, CoordinateTransformations
 # TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
 using Images #also imports FileIO for reading jpg
-import StatsBase, JLD
+import StatsBase, JLD2, FileIO
 
-const CAMERALENSES = "CameraLenses.jld"
+const CAMERALENSES = "CameraLenses.jld2"
 if !isfile(CAMERALENSES)
     warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
     close(JLD.jldopen(CAMERALENSES,"w"))
@@ -207,15 +207,16 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
     @assert isfile(CAMERALENSES)
 
     lenshash = string(hash( (imgsize,lensparams) ))  #create unique cameralens identifier
-    jld = JLD.jldopen(CAMERALENSES, "r")
-    past_hashes = names(jld)
-    close(jld)
+    past_hashes = JLD2.jldopen(CAMERALENSES, "r") do file
+         keys(file)
+    end
 
     if lenshash in past_hashes
-        jld = JLD.jldopen(CAMERALENSES, "r")
         debug(setlog, "previous calibration found for hash $lenshash")
-        mycamlens = read(jld, lenshash)
-        close(jld)
+        mycamlens = FileIO.load(CAMERALENSES, lenshash)
+        # jld = JLD.jldopen(CAMERALENSES, "r")        
+        # mycamlens = read(jld, lenshash)
+        # close(jld)
     else
         lensx, lensy, lensa, lensb, lensρ = lensparams
         # Generic functions can't serialize, so need anonymous function to save
@@ -235,8 +236,8 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         debug(setlog,"calibrate new mycamlens")
         mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
         debug(setlog,"calibrated new mycamlens, now save to file")
-        JLD.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
-            write(file, lenshash, mycamlens)
+        JLD2.jldopen(CAMERALENSES, "a+") do file #"r+" to append writing data
+            file[lenshash] = mycamlens
         end
         debug(setlog,"new mycamlens saved to file: $lenshash")
     end
