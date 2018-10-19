@@ -214,9 +214,6 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
     if lenshash in past_hashes
         debug(setlog, "previous calibration found for hash $lenshash")
         mycamlens = FileIO.load(CAMERALENSES, lenshash)
-        # jld = JLD.jldopen(CAMERALENSES, "r")        
-        # mycamlens = read(jld, lenshash)
-        # close(jld)
     else
         lensx, lensy, lensa, lensb, lensρ = lensparams
         # Generic functions can't serialize, so need anonymous function to save
@@ -236,7 +233,7 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         debug(setlog,"calibrate new mycamlens")
         mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
         debug(setlog,"calibrated new mycamlens, now save to file")
-        JLD2.jldopen(CAMERALENSES, "a+") do file #"r+" to append writing data
+        JLD2.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
             file[lenshash] = mycamlens
         end
         debug(setlog,"new mycamlens saved to file: $lenshash")
