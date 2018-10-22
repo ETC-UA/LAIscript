@@ -1,8 +1,10 @@
 using PyCall, DataFrames
 using Logging
+import Git
 
 # use Conda.add("pyodbc") if not yet installed
 @pyimport pyodbc
+
 
 # Setup Logging
 !isdir("logs") && mkdir("logs")
@@ -10,6 +12,9 @@ Logging.configure(level=DEBUG, filename=joinpath("logs",
     "logjulia_$(Dates.today())_$(Dates.hour(now()))h$(Dates.minute(now())).log"))
 TEMPSETLOG = joinpath("logs", "tempsetlog.log")
 DATALOG = joinpath("logs", "data.txt")
+
+#get version of LeafAreaIndex.jl
+LAICOMMIT = Git.readchomp(`rev-parse HEAD`, dir=Pkg.dir("LeafAreaIndex"))
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
@@ -57,6 +62,7 @@ end
 
 
 function process_calibration(conn)
+
     cursor = conn[:cursor]()
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
     
@@ -182,6 +188,7 @@ function process_images(conn)
         datafile = open(DATALOG)
         updatetable(conn, "results", resultsID, :data, readall(datafile))
         close(datafile)
+        updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
             LAIvalue = LAIres["LAI"]
             LAIsd    = LAIres["LAIsd"]
