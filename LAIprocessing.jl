@@ -17,6 +17,7 @@ end
     type LAIresult <: LAIresultInfo
         imagepath::AbstractString
         LAI::Float64
+        LAIe::Float64
         thresh::Float64
         clump::Float64
     end
@@ -51,7 +52,7 @@ end
             #debug(setlog,"$i clumping: $clump")
             LAI = LAIe / clump
             #debug(setlog,"$i LAI: $LAI")            
-            return LAIresult(imagepath, LAI, thresh, clump)
+            return LAIresult(imagepath, LAI, LAIe, thresh, clump)
         catch lai_err
             #debug(setlog,"$i error: $lai_err")
             #@show lai_err
@@ -182,7 +183,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     truncate(datalog, 0)
     close(datalog)
     datalog = open(datafile, "a+")
-    write(datalog, "Filename, LAI, Threshold_RC, Clumping_LX\n")
+    write(datalog, "Filename, LAI, LAIe, Threshold_RC, Clumping_LX\n")
     witherror = false
     for lai in resultset
         if !isa(lai, LAIresult)
@@ -190,7 +191,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
             debug(setlog, "found error in LAIresult $lai")
             continue
         end
-        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.thresh), $(lai.clump)\n")        
+        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe) $(lai.thresh), $(lai.clump)\n")        
     end
     close(datalog)
     debug(setlog,"closed $datafile")
