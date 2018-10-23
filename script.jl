@@ -97,7 +97,7 @@ function process_calibration(conn)
     end
 end
 
-function gettabledata(curs, results)
+function gettabledata(cursor, results)
 
     debug("reading LAI_App database tables")
 
@@ -147,7 +147,7 @@ function process_images(conn)
     results = selecttable(cursor, "results", "processed = 0", true)
     
     size(results)[1] != 0 || return        
-
+    resultsID = results[1, :ID]
     set_processed() = updatetable(conn, "results", resultsID, :processed, 1)
     # TODO make macro for all these `if not found return` statements
     try
@@ -184,9 +184,9 @@ function process_images(conn)
 
         updatetable(conn, "results", resultsID, :processed, 1)
         updatetable(conn, "results", resultsID, :succes, ifelse(success,1,0))
-        updatetable(conn, "results", resultsID, :resultLog, string(readall(open(TEMPSETLOG))))
+        updatetable(conn, "results", resultsID, :resultLog, string(readstring(open(TEMPSETLOG))))
         datafile = open(DATALOG)
-        updatetable(conn, "results", resultsID, :data, readall(datafile))
+        updatetable(conn, "results", resultsID, :data, readstring(datafile))
         close(datafile)
         updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
@@ -225,5 +225,5 @@ end
 
 # Connect to the database
 
-#cnxn  = pyodbc.connect("DSN=LAI")
-#mainloop(cnxn)
+cnxn  = pyodbc.connect("DSN=LAI")
+mainloop(cnxn)
