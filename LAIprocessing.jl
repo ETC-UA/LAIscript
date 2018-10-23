@@ -151,7 +151,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     debug(setlog, "received $N image paths")
     
     # create result dictionary
-    result = Dict("success" => false)
+    result = Dict{String, Any}("success" => false)
     
     debug(setlog,"create slope object")
     slope, slopeaspect = slopeparams
@@ -187,11 +187,13 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
+            debug(setlog, "found error in LAIresult $lai")
             continue
         end
         write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.thresh), $(lai.clump)\n")        
     end
     close(datalog)
+    debug(setlog,"closed $datafile")
     witherror && (return result)
 
     LAIs = Float64[r.LAI for r in resultset]
