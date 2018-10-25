@@ -67,11 +67,10 @@ function process_calibration(conn)
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
     
     size(cameraSetup, 1) != 0 || return
-
+    setupID = cameraSetup[1, :ID]
     try
         info("detected new processed=false in cameraSetup table")
         
-        setupID    = cameraSetup[1, :ID]        
         pathCenter = cameraSetup[1, :pathCenter]
         pathProj   = cameraSetup[1, :pathProj]
         width      = cameraSetup[1, :width]
