@@ -20,6 +20,7 @@ end
         LAIe::Float64
         thresh::Float64
         clump::Float64
+        overexposure::Float64
     end
     type NoLAIresult <: LAIresultInfo
         exception::Exception
@@ -51,8 +52,9 @@ end
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
             #debug(setlog,"$i clumping: $clump")
             LAI = LAIe / clump
-            #debug(setlog,"$i LAI: $LAI")            
-            return LAIresult(imagepath, LAI, LAIe, thresh, clump)
+            #debug(setlog,"$i LAI: $LAI")   
+            overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
+            return LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure)
         catch lai_err
             #debug(setlog,"$i error: $lai_err")
             #@show lai_err
@@ -183,7 +185,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     truncate(datalog, 0)
     close(datalog)
     datalog = open(datafile, "a+")
-    write(datalog, "Filename, LAI, LAIe, Threshold_RC, Clumping_LX\n")
+    write(datalog, "Filename, LAI, LAIe, Threshold_RC, Clumping_LX, Overexposure\n")
     witherror = false
     for lai in resultset
         if !isa(lai, LAIresult)
@@ -191,7 +193,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
             debug(setlog, "found error in LAIresult $lai")
             continue
         end
-        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump)\n")        
+        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump),$(lai.overepxosure)\n")        
     end
     close(datalog)
     debug(setlog,"closed $datafile")
