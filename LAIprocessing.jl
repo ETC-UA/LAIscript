@@ -194,7 +194,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
             continue
         end
         overexp_str = @sprintf("%.7f", lai.overexposure)
-        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), overexp_str\n")        
+        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), $(overexp_str)\n")        
     end
     close(datalog)
     debug(setlog,"closed $datafile")
