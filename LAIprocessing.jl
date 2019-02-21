@@ -193,7 +193,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
             debug(setlog, "found error in LAIresult $lai")
             continue
         end
-        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump),$(lai.overepxosure)\n")        
+        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump),$(lai.overexposure)\n")        
     end
     close(datalog)
     debug(setlog,"closed $datafile")
