@@ -1,17 +1,18 @@
 using Logging, LeafAreaIndex, ParallelDataTransfer, CoordinateTransformations
+using PyCall
 # TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
 using Images #also imports FileIO for reading jpg
 import StatsBase, JLD2, FileIO
 
-const CAMERALENSES = "CameraLenses.jld2"
+CAMERALENSES = "CameraLenses.jld2"
 if !isfile(CAMERALENSES)
     warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
     close(JLD2.jldopen(CAMERALENSES,"w"))
 end
 
 @everywhere begin
-    #Lg = Logging
-
+    Lg = Logging
+	
     abstract type LAIresultInfo; end
     "Convenience type to hold results from LAI calculation."
     type LAIresult <: LAIresultInfo
@@ -31,41 +32,50 @@ end
     end
 
     function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens, 
-                    sl::LeafAreaIndex.SlopeInfo)#, mainlogfile::AbstractString)        
+                    sl::LeafAreaIndex.SlopeInfo)
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
-        #@show "before logger"
+		id = myid() # ID of current processor for logging
+        @show "before logger"
         #baselog, logext = splitext(mainlogfile)
         #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
-        #@show locallog = Lg.Logger("locallog"*string(myid()))
-        #Lg.configure(locallog, filename=locallogfile, level=DEBUG)
+		@show locallog = Lg.Logger("locallog")
+		locallogfile = joinpath("logs", "locallog$(id).log")
+		Lg.configure(locallog, filename=locallogfile, level=Lg.DEBUG)
         try
-            #i = myid() # ID of current processor            
-            #@show ("start getLAI on $imagepath")            
+            #@show ("start getLAI on $imagepath")
+			Lg.debug(locallog, "start processing on $imagepath")
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
-            #debug(setlog, "$i create PolarImage")
+            Lg.debug(locallog, "create PolarImage")
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
-            #debug(setlog, "$i PolarImage created")
+            Lg.debug(locallog, "$PolarImage created")
             thresh = LeafAreaIndex.threshold(polim)
+			@show "thresh calculated"
+			Lg.debug(locallog, "$threshold calculated")
             csv_gf = csv_gapfraction(polim, thresh)
-            csv_hist = csv_histogram(polim.img)
-            csv_ex = csv_exifs(imagepath)
-            csv_perc = csv_percentiles(polim)
+			@show "csv_gapfraction calculated"
+            Lg.debug(locallog, "created csv_gapfraction" )
+			#csv_hist = csv_histogram(polim.img)
+            #csv_ex = csv_exifs(imagepath)
+            #csv_perc = csv_percentiles(polim)
             write_bin_jpg(polim, thresh, imagepath)
-            #debug(setlog,"$i threshold: $thresh")        
+            Lg.debug(locallog,"wrote bin and jpg")        
             LAIe = LeafAreaIndex.inverse(polim, thresh)
-            #debug(setlog,"$i effective LAI: $LAIe")
+            Lg.debug(locallog,"effective LAI: $LAIe")
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
-            #debug(setlog,"$i clumping: $clump")
+            Lg.debug(locallog,"clumping: $clump")
             LAI = LAIe / clump
-            #debug(setlog,"$i LAI: $LAI")   
+            Lg.debug(locallog, "LAI: $LAI")   
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
-            return LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_perc)
+			Lg.debug(locallog, "overexposure calculated")
+			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, "","","")#csv_hist, csv_ex, csv_perc)
+			Lg.debug(locallog, "LAIresult created")
+            return res
         catch lai_err
-            #debug(setlog,"$i error: $lai_err")
+            Lg.debug(locallog, "error: $lai_err")
             #@show lai_err
             return NoLAIresult(lai_err)
         end
@@ -181,7 +191,7 @@ end
         return csv
     end
 
-    py"""
+    PyCall.py"""
     import exifread
 
     def exifs(path):
@@ -196,7 +206,7 @@ end
         return res
     """
     function csv_exifs(imgfilepath)
-        tags = py"exifs"(file)
+        tags = PyCall.py"exifs"(file)
         csv = "key, value\n "
         for (k,v) in tags
             csv *= "$k, $v\n "
@@ -245,7 +255,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
 
     ## LOGGING
     # Create specific logger per set with debug info
-    writecsv(logfile, "") #clear logfile
+    #writecsv(logfile, "") #clear logfile
     setlog = Logger("setlog")
     Logging.configure(setlog, filename=logfile, level=DEBUG)
     
@@ -270,7 +280,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     debug(setlog, "calibrate CameraLens or load previous calibration")
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, setlog)
 
-    debug(setlog,"parallel process getLAI")
+    debug(setlog ,"parallel process getLAI")
     #needed for anon functions in CameraLens 
     sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 

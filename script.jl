@@ -1,10 +1,10 @@
-using PyCall, DataFrames
+
+#addprocs before including LAIprocessing.jl !
+# 9 processors ideal because typical size of image set
+addprocs(1)#min(Sys.CPU_CORES, 9) - nprocs())
+
 using Logging
 import Git
-
-# use Conda.add("pyodbc") if not yet installed
-@pyimport pyodbc
-
 
 # Setup Logging
 !isdir("logs") && mkdir("logs")
@@ -16,9 +16,9 @@ DATALOG = joinpath("logs", "data.txt")
 #get version of LeafAreaIndex.jl
 LAICOMMIT = Git.readchomp(`rev-parse HEAD`, dir=Pkg.dir("LeafAreaIndex"))
 
-#addprocs before including LAIprocessing.jl !
-# 9 processors ideal because typical size of image set
-addprocs(max(Sys.CPU_CORES, 9) - nprocs())
+using PyCall, DataFrames
+# use Conda.add("pyodbc") if not yet installed
+@pyimport pyodbc
 
 include("LAIprocessing.jl")
 
@@ -200,7 +200,8 @@ function process_images(conn)
                 for (imgp, csv_gf) in LAIres["csv_gapfraction"]
                     imgp in images[:path] || continue
                     updatetable(conn, "images", images[:ID][images[:path].==imgp], :gapfraction, csv_gf)        
-            catch upy
+				end
+            catch y
                 err("could not add LAI to results table, error: $y")
             end
         end
