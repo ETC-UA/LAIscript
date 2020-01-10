@@ -71,6 +71,7 @@ function process_calibration(conn)
     try
         info("detected new processed=false in cameraSetup table")
         
+        #setupID    = cameraSetup[1, :ID]        
         pathCenter = cameraSetup[1, :pathCenter]
         pathProj   = cameraSetup[1, :pathProj]
         width      = cameraSetup[1, :width]
