@@ -49,12 +49,12 @@ end
 			Lg.debug(locallog, "start processing on $imagepath")
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
-            Lg.debug(locallog, "create PolarImage")
+            Lg.debug(locallog, "image read")
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
-            Lg.debug(locallog, "$PolarImage created")
+            Lg.debug(locallog, "PolarImage created")
             thresh = LeafAreaIndex.threshold(polim)
 			@show "thresh calculated"
-			Lg.debug(locallog, "$threshold calculated")
+			Lg.debug(locallog, "threshold calculated")
             csv_gf = csv_gapfraction(polim, thresh)
 			@show "csv_gapfraction calculated"
             Lg.debug(locallog, "created csv_gapfraction" )
@@ -143,12 +143,12 @@ end
         
         image = polim.img[down:up, left:right]
         Images.save(jpgfilepath, image)
-        imgage_gray = Gray.(image .> thresh)
+        imgage_gray = Images.Gray.(image .> thresh)
         Images.save(binfilepath, imgage_gray)
         return
     end
     function cropbox(polim::LeafAreaIndex.PolarImage)
-        radius = floor(Int, polarimg.cl.fθρ(pi/2))
+        radius = floor(Int, polim.cl.fθρ(pi/2))
         left, right = polim.cl.cj - radius, polim.cl.cj + radius
         down, up    = polim.cl.ci - radius, polim.cl.ci + radius
         # prevent out of bounds

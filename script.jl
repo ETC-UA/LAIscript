@@ -1,7 +1,7 @@
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-addprocs(1)#min(Sys.CPU_CORES, 9) - nprocs())
+#addprocs(1)#min(Sys.CPU_CORES, 9) - nprocs())
 
 using Logging
 import Git
@@ -199,7 +199,7 @@ function process_images(conn)
                 info("added LAI_SD to results table for ID $resultsID")
                 for (imgp, csv_gf) in LAIres["csv_gapfraction"]
                     imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp], :gapfraction, csv_gf)        
+                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :gapfraction, csv_gf)        
 				end
             catch y
                 err("could not add LAI to results table, error: $y")
