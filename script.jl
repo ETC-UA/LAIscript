@@ -197,22 +197,16 @@ function process_images(conn)
                 info("added LAI to results table for ID $resultsID")
                 updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
                 info("added LAI_SD to results table for ID $resultsID")
-                for (imgp, csv) in LAIres["csv_gapfraction"]
-                    imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :gapfraction, csv)        
+                for (reskey, col) in [
+                    ("csv_gapfraction", :gapfraction), ("csv_exif", :exif),
+                    ("csv_histogram", :histogram), ("csv_stats", :stats),
+                    ("jpgpath", :jpgPath), ("binpath", :binPath)]
+                    for (imgp, csv) in LAIres[reskey]
+                        imgp in images[:path] || continue
+                        imageID = images[:ID][images[:path].==imgp][1]
+                        updatetable(conn, "images", imageID , col, csv)        
+                    end
                 end
-                for (imgp, csv) in LAIres["csv_histogram"]
-                    imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :histogram, csv)
-                end
-                for (imgp, csv) in LAIres["csv_exif"]
-                    imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :exif, csv)        
-                end                
-                for (imgp, csv) in LAIres["csv_stats"]
-                    imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :stats, csv)        
-				end
             catch y
                 err("could not add LAI to results table, error: $y")
             end

@@ -26,6 +26,8 @@ end
         csv_histogram::AbstractString
         csv_exif::AbstractString
         csv_stats::AbstractString
+        jpgpath::AbstractString
+        binpath::AbstractString
     end
     type NoLAIresult <: LAIresultInfo
         exception::Exception
@@ -64,7 +66,7 @@ end
 			Lg.debug(locallog, "created csv_exif" )
             csv_st = csv_stats(polim)
 			Lg.debug(locallog, "created csv_stats" )
-            write_bin_jpg(polim, thresh, imagepath)
+            jpgfn, binfn = write_bin_jpg(polim, thresh, imagepath)
             Lg.debug(locallog,"wrote bin and jpg")        
             LAIe = LeafAreaIndex.inverse(polim, thresh)
             Lg.debug(locallog,"effective LAI: $LAIe")
@@ -74,7 +76,7 @@ end
             Lg.debug(locallog, "LAI: $LAI")   
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
 			Lg.debug(locallog, "overexposure calculated")
-			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st)
+			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn)
 			Lg.debug(locallog, "LAIresult created")
             return res
         catch lai_err
@@ -148,7 +150,7 @@ end
         Images.save(jpgfilepath, image)
         imgage_gray = Images.Gray.(image .> thresh)
         Images.save(binfilepath, imgage_gray)
-        return
+        return jpgfilepath, binfilepath
     end
     function cropbox(polim::LeafAreaIndex.PolarImage)
         radius = floor(Int, polim.cl.fθρ(pi/2))
@@ -302,7 +304,9 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     result["csv_gapfraction"] = Dict{String, String}()
 	result["csv_histogram"] = Dict{String, String}()
 	result["csv_exif"] = Dict{String, String}()
-	result["csv_stats"] = Dict{String, String}()
+    result["csv_stats"] = Dict{String, String}()
+    result["jpgpath"] = Dict{String, String}()
+    result["binpath"] = Dict{String, String}()
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
@@ -315,6 +319,8 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
         result["csv_histogram"][lai.imagepath] = lai.csv_histogram
         result["csv_exif"][lai.imagepath] = lai.csv_exif
         result["csv_stats"][lai.imagepath] = lai.csv_stats
+        result["jpgpath"][lai.imagepath] = lai.jpgpath
+        result["binpath"][lai.imagepath] = lai.binpath
     end
     close(datalog)
     debug(setlog,"closed $datafile")
