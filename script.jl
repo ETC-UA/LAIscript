@@ -196,7 +196,10 @@ function process_images(conn)
                 updatetable(conn, "results", resultsID, :LAI, LAIvalue)
                 info("added LAI to results table for ID $resultsID")
                 updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
-                info("added LAI_SD to results table for ID $resultsID")        
+                info("added LAI_SD to results table for ID $resultsID")
+                for (imgp, csv_gf) in LAIres["csv_gapfraction"]
+                    imgp in images[:path] || continue
+                    updatetable(conn, "images", images[:ID][images[:path].==imgp], :gapfraction, csv_gf)        
             catch upy
                 err("could not add LAI to results table, error: $y")
             end

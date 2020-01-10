@@ -21,6 +21,10 @@ end
         thresh::Float64
         clump::Float64
         overexposure::Float64
+        csv_gapfraction::AbstractString
+        csv_histogram::AbstractString
+        csv_exifs::AbstractString
+        csv_percentiles::AbstractString
     end
     type NoLAIresult <: LAIresultInfo
         exception::Exception
@@ -45,16 +49,21 @@ end
             #debug(setlog, "$i create PolarImage")
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
             #debug(setlog, "$i PolarImage created")
-            thresh= LeafAreaIndex.threshold(polim)
+            thresh = LeafAreaIndex.threshold(polim)
+            csv_gf = csv_gapfraction(polim, thresh)
+            csv_hist = csv_histogram(polim.img)
+            csv_ex = csv_exifs(imagepath)
+            csv_perc = csv_percentiles(polim)
+            write_bin_jpg(polim, thresh, imagepath)
             #debug(setlog,"$i threshold: $thresh")        
-            LAIe  = LeafAreaIndex.inverse(polim, thresh)
+            LAIe = LeafAreaIndex.inverse(polim, thresh)
             #debug(setlog,"$i effective LAI: $LAIe")
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
             #debug(setlog,"$i clumping: $clump")
             LAI = LAIe / clump
             #debug(setlog,"$i LAI: $LAI")   
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
-            return LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure)
+            return LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_perc)
         catch lai_err
             #debug(setlog,"$i error: $lai_err")
             #@show lai_err
@@ -116,6 +125,96 @@ end
             # See https://en.wikipedia.org/wiki/SRGB
             A[i] = A[i] <= 0.04045 ? A[i]/12.92 : ((A[i]+0.055)/1.055)^2.4
         end
+    end
+
+    function write_bin_jpg(polim::LeafAreaIndex.PolarImage, thresh, imgfilepath)
+        jpgfilepath, binfilepath = make_bin_jpg_paths(imgfilepath)
+        left, right, down, up = cropbox(polim)
+        
+        image = polim.img[down:up, left:right]
+        Images.save(jpgfilepath, image)
+        imgage_gray = Gray.(image .> thresh)
+        Images.save(binfilepath, imgage_gray)
+        return
+    end
+    function cropbox(polim::LeafAreaIndex.PolarImage)
+        radius = floor(Int, polarimg.cl.fθρ(pi/2))
+        left, right = polim.cl.cj - radius, polim.cl.cj + radius
+        down, up    = polim.cl.ci - radius, polim.cl.ci + radius
+        # prevent out of bounds
+        left, right  = max(1, left), min(size(polim.cl)[2], right)
+        down, up     = max(1, down), min(size(polim.cl)[1], up)
+        return left, right, down, up
+    end
+    function make_bin_jpg_paths(imgfilepath)
+        imgdir, imgfile = splitdir(imgfilepath)
+        imgbase, imgext = splitext(imgfile)
+        bindir = joinpath(imgdir, "bin")
+        isdir(bindir) || mkpath(bindir)
+        binfilepath = joinpath(bindir, imgbase*"_bin.png")
+        jpgdir = joinpath(imgdir, "jpg")
+        isdir(jpgdir) || mkpath(jpgdir)
+        jpgfilepath = joinpath(jpgdir, imgbase*"_jpg.jpg")
+        return jpgfilepath, binfilepath
+    end
+
+    function csv_gapfraction(polim::LeafAreaIndex.PolarImage, thresh)
+        Nrings = LeafAreaIndex.Nrings_def(polim)
+        θmax = LeafAreaIndex.maxviewangle(polim)
+        θedges, θmid, K = LeafAreaIndex.contactfreqs(polim, 0.0, θmax, Nrings, thresh)
+        T = exp.(-K./cos.(θmid))
+        csv = "view_angle, gapfraction\n "
+        for i in 1:length(T)
+            csv *= "$(θmid[i]), $(T[i])\n "
+        end
+        return csv
+    end
+
+    function csv_histogram(img, bins=256)
+        hist_range = -1 / (bins-1) : 1 / (bins-1) : 1
+        log10nz(x) = x == 0 ? 0 : log10(x)
+        counts = log10nz.(LeafAreaIndex.fasthist(reshape(img, length(img)), hist_range))
+        csv = "intensity, count_log10\n "
+        for i in 1:length(counts)
+            csv *= "$(i/bins), $(counts[i])\n "
+        end
+        return csv
+    end
+
+    py"""
+    import exifread
+
+    def exifs(path):
+        tags = {}
+        with open(path, 'rb') as f:
+            tags = exifread.process_file(f, details=False)
+        kinds = ['EXIF ExposureTime', 'EXIF FNumber', 'EXIF ISOSpeedRatings', 'Image Orientation', 
+                'Image DateTime', "Image Make", "Image Model", "EXIF FocalLength" ]
+        # for kind in kinds:
+        #     print(str(tags.get(kind)))
+        res = {k:str(v) for (k,v) in tags.items() if k in kinds}
+        return res
+    """
+    function csv_exifs(imgfilepath)
+        tags = py"exifs"(file)
+        csv = "key, value\n "
+        for (k,v) in tags
+            csv *= "$k, $v\n "
+        end
+        return csv
+    end
+    function csv_percentiles(polim::LeafAreaIndex.PolarImage)
+        left, right, down, up = cropbox(polim)
+        image = polim.img[down:up, left:right]
+        len = length(image)
+        image = reshape(image, len)
+        sort!(image)
+        csv = "percentile, intensity\n "
+        for p in [0.95, 0.98, 0.99, 0.999]
+            csv *= "$(p), $(float(image[floor(Int, len*p)])) \n "
+        end
+        csv *= "max, $(float(image[end])) \n "
+        return csv
     end
 end
 
@@ -187,6 +286,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     datalog = open(datafile, "a+")
     write(datalog, "Filename, LAI, LAIe, Threshold_RC, Clumping_LX, Overexposure\n")
     witherror = false
+    result["csv_gapfraction"] = Dict{String, String}()
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
@@ -194,7 +294,8 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
             continue
         end
         overexp_str = @sprintf("%.7f", lai.overexposure)
-        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), $(overexp_str)\n")        
+        write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), $(overexp_str)\n")
+        result["csv_gapfraction"][lai.imagepath] = lai.csv_gapfraction
     end
     close(datalog)
     debug(setlog,"closed $datafile")
