@@ -36,12 +36,12 @@ end
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
 		id = myid() # ID of current processor for logging file
-        @show "before logger"
+        #@show "before logger"
         #baselog, logext = splitext(mainlogfile)
         #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
-		@show locallog = Lg.Logger("locallog")
+		locallog = Lg.Logger("locallog")
 		locallogfile = joinpath("logs", "locallog$(id).log")
 		Lg.configure(locallog, filename=locallogfile, level=Lg.DEBUG)
         try
@@ -53,14 +53,17 @@ end
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
             Lg.debug(locallog, "PolarImage created")
             thresh = LeafAreaIndex.threshold(polim)
-			@show "thresh calculated"
+			#@show "thresh calculated"
 			Lg.debug(locallog, "threshold calculated")
             csv_gf = csv_gapfraction(polim, thresh)
-			@show "csv_gapfraction calculated"
+			#@show "csv_gapfraction calculated"
             Lg.debug(locallog, "created csv_gapfraction" )
 			csv_hist = csv_histogram(polim.img)
+			Lg.debug(locallog, "created csv_histogram" )
             csv_ex = csv_exif(imagepath)
+			Lg.debug(locallog, "created csv_exif" )
             csv_st = csv_stats(polim)
+			Lg.debug(locallog, "created csv_stats" )
             write_bin_jpg(polim, thresh, imagepath)
             Lg.debug(locallog,"wrote bin and jpg")        
             LAIe = LeafAreaIndex.inverse(polim, thresh)
@@ -205,8 +208,8 @@ end
         res = {k:str(v) for (k,v) in tags.items() if k in kinds}
         return res
     """
-    function csv_exifs(imgfilepath)
-        tags = PyCall.py"exifs"(file)
+    function csv_exif(imgfilepath)
+        tags = PyCall.py"exif"(imgfilepath)
         csv = "key, value\n "
         for (k,v) in tags
             csv *= "$k, $v\n "
@@ -297,6 +300,9 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     write(datalog, "Filename, LAI, LAIe, Threshold_RC, Clumping_LX, Overexposure\n")
     witherror = false
     result["csv_gapfraction"] = Dict{String, String}()
+	result["csv_histogram"] = Dict{String, String}()
+	result["csv_exif"] = Dict{String, String}()
+	result["csv_stats"] = Dict{String, String}()
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true

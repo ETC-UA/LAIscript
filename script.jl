@@ -201,15 +201,15 @@ function process_images(conn)
                     imgp in images[:path] || continue
                     updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :gapfraction, csv)        
                 end
-                for (imgp, csv_ in LAIres["csv_histogram"]
+                for (imgp, csv) in LAIres["csv_histogram"]
                     imgp in images[:path] || continue
-                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :histogram, csv)        
+                    updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :histogram, csv)
                 end
-                for (imgp, csv_ in LAIres["csv_exifs"]
+                for (imgp, csv) in LAIres["csv_exif"]
                     imgp in images[:path] || continue
                     updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :exif, csv)        
                 end                
-                for (imgp, csv_ in LAIres["csv_stats"]
+                for (imgp, csv) in LAIres["csv_stats"]
                     imgp in images[:path] || continue
                     updatetable(conn, "images", images[:ID][images[:path].==imgp][1], :stats, csv)        
 				end
