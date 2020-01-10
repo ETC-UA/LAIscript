@@ -24,8 +24,8 @@ end
         overexposure::Float64
         csv_gapfraction::AbstractString
         csv_histogram::AbstractString
-        csv_exifs::AbstractString
-        csv_percentiles::AbstractString
+        csv_exif::AbstractString
+        csv_stats::AbstractString
     end
     type NoLAIresult <: LAIresultInfo
         exception::Exception
@@ -35,7 +35,7 @@ end
                     sl::LeafAreaIndex.SlopeInfo)
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
-		id = myid() # ID of current processor for logging
+		id = myid() # ID of current processor for logging file
         @show "before logger"
         #baselog, logext = splitext(mainlogfile)
         #locallogfile = baselog * string(myid()) * logext
@@ -58,9 +58,9 @@ end
             csv_gf = csv_gapfraction(polim, thresh)
 			@show "csv_gapfraction calculated"
             Lg.debug(locallog, "created csv_gapfraction" )
-			#csv_hist = csv_histogram(polim.img)
-            #csv_ex = csv_exifs(imagepath)
-            #csv_perc = csv_percentiles(polim)
+			csv_hist = csv_histogram(polim.img)
+            csv_ex = csv_exif(imagepath)
+            csv_st = csv_stats(polim)
             write_bin_jpg(polim, thresh, imagepath)
             Lg.debug(locallog,"wrote bin and jpg")        
             LAIe = LeafAreaIndex.inverse(polim, thresh)
@@ -71,7 +71,7 @@ end
             Lg.debug(locallog, "LAI: $LAI")   
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
 			Lg.debug(locallog, "overexposure calculated")
-			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, "","","")#csv_hist, csv_ex, csv_perc)
+			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st)
 			Lg.debug(locallog, "LAIresult created")
             return res
         catch lai_err
@@ -81,7 +81,7 @@ end
         end
     end
 
-    function readrawjpg(imp::AbstractString, sl::LeafAreaIndex.SlopeInfo)#, setlog::Logging.Logger)
+    function readrawjpg(imp::AbstractString, sl::LeafAreaIndex.SlopeInfo)
         #i = myid()# ID of current processor
         #debug(setlog, "$i start reading $imp")
         @assert imp != nothing
@@ -194,7 +194,7 @@ end
     PyCall.py"""
     import exifread
 
-    def exifs(path):
+    def exif(path):
         tags = {}
         with open(path, 'rb') as f:
             tags = exifread.process_file(f, details=False)
@@ -213,7 +213,7 @@ end
         end
         return csv
     end
-    function csv_percentiles(polim::LeafAreaIndex.PolarImage)
+    function csv_stats(polim::LeafAreaIndex.PolarImage)
         left, right, down, up = cropbox(polim)
         image = polim.img[down:up, left:right]
         len = length(image)
@@ -306,6 +306,9 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
         overexp_str = @sprintf("%.7f", lai.overexposure)
         write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), $(overexp_str)\n")
         result["csv_gapfraction"][lai.imagepath] = lai.csv_gapfraction
+        result["csv_histogram"][lai.imagepath] = lai.csv_histogram
+        result["csv_exif"][lai.imagepath] = lai.csv_exif
+        result["csv_stats"][lai.imagepath] = lai.csv_stats
     end
     close(datalog)
     debug(setlog,"closed $datafile")
