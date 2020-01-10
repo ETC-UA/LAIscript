@@ -1,7 +1,7 @@
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-#addprocs(1)#min(Sys.CPU_CORES, 9) - nprocs())
+addprocs(min(Sys.CPU_CORES, 9) - nprocs())
 
 using Logging
 import Git
