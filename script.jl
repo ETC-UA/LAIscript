@@ -1,20 +1,23 @@
+using Distributed
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-addprocs(min(Sys.CPU_CORES, 9) - nprocs())
+addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
 
 using Logging
-import Git
 
 # Setup Logging
 !isdir("logs") && mkdir("logs")
-Logging.configure(level=DEBUG, filename=joinpath("logs", 
-    "logjulia_$(Dates.today())_$(Dates.hour(now()))h$(Dates.minute(now())).log"))
+logger_io = open(joinpath("logs", "logjulia.log"), "w+")
+logger = SimpleLogger(logger_io)
+global_logger(logger)
 TEMPSETLOG = joinpath("logs", "tempsetlog.log")
 DATALOG = joinpath("logs", "data.txt")
 
 #get version of LeafAreaIndex.jl
-LAICOMMIT = Git.readchomp(`rev-parse HEAD`, dir=Pkg.dir("LeafAreaIndex"))
+# using Pkg
+# import LibGit2
+# LAICOMMIT = LibGit2.readchomp(`rev-parse HEAD`, dir=Pkg.dir("LeafAreaIndex"))
 
 using PyCall, DataFrames
 # use Conda.add("pyodbc") if not yet installed
@@ -188,7 +191,7 @@ function process_images(conn)
         datafile = open(DATALOG)
         updatetable(conn, "results", resultsID, :data, readstring(datafile))
         close(datafile)
-        updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
+        # updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
             LAIvalue = LAIres["LAI"]
             LAIsd    = LAIres["LAIsd"]
