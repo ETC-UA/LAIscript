@@ -6,16 +6,16 @@ import StatsBase, JLD2, FileIO
 
 CAMERALENSES = "CameraLenses.jld2"
 if !isfile(CAMERALENSES)
-    warn("file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES")
+    @warn "file with previous CameraLens calibrations not found, will create empty one called $CAMERALENSES"
     close(JLD2.jldopen(CAMERALENSES,"w"))
 end
 
 @everywhere begin
-    Lg = Logging
+    # Lg = Logging
 	
     abstract type LAIresultInfo; end
     "Convenience type to hold results from LAI calculation."
-    type LAIresult <: LAIresultInfo
+    struct LAIresult <: LAIresultInfo
         imagepath::AbstractString
         LAI::Float64
         LAIe::Float64
@@ -29,7 +29,7 @@ end
         jpgpath::AbstractString
         binpath::AbstractString
     end
-    type NoLAIresult <: LAIresultInfo
+    struct NoLAIresult <: LAIresultInfo
         exception::Exception
     end
 
@@ -43,52 +43,54 @@ end
         #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
-		locallog = Lg.Logger("locallog")
-		locallogfile = joinpath("logs", "locallog$(id).log")
-		Lg.configure(locallog, filename=locallogfile, level=Lg.DEBUG)
+        logger_local_io = open(joinpath("logs", "locallog$(id).log"), "w+")
+        logger_local = SimpleLogger(logger_local_io)
+        with_logger(logger_local) do
+		
         try
             #@show ("start getLAI on $imagepath")
-			Lg.debug(locallog, "start processing on $imagepath")
+			@debug "start processing on $imagepath"
             img = readrawjpg(imagepath, sl)            
             #@show "image read"
-            Lg.debug(locallog, "image read")
+            @debug "image read"
             polim = LeafAreaIndex.PolarImage(img, cl, sl)
-            Lg.debug(locallog, "PolarImage created")
+            @debug "PolarImage created"
             thresh = LeafAreaIndex.threshold(polim)
 			#@show "thresh calculated"
-			Lg.debug(locallog, "threshold calculated")
+			@debug "threshold calculated"
             csv_gf = csv_gapfraction(polim, thresh)
 			#@show "csv_gapfraction calculated"
-            Lg.debug(locallog, "created csv_gapfraction" )
+            @debug "created csv_gapfraction"
 			csv_hist = csv_histogram(polim.img)
-			Lg.debug(locallog, "created csv_histogram" )
+			@debug "created csv_histogram"
             csv_ex = csv_exif(imagepath)
-			Lg.debug(locallog, "created csv_exif" )
+			@debug "created csv_exif"
             csv_st = csv_stats(polim)
-			Lg.debug(locallog, "created csv_stats" )
+			@debug "created csv_stats"
             jpgfn, binfn = write_bin_jpg(polim, thresh, imagepath)
-            Lg.debug(locallog,"wrote bin and jpg")        
+            @debug "wrote bin and jpg"
             LAIe = LeafAreaIndex.inverse(polim, thresh)
-            Lg.debug(locallog,"effective LAI: $LAIe")
+            @debug "effective LAI: $LAIe"
             clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
-            Lg.debug(locallog,"clumping: $clump")
+            @debug "clumping: $clump"
             LAI = LAIe / clump
-            Lg.debug(locallog, "LAI: $LAI")   
+            @debug "LAI: $LAI" 
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
-			Lg.debug(locallog, "overexposure calculated")
+			@debug "overexposure calculated"
 			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn)
-			Lg.debug(locallog, "LAIresult created")
+			@debug "LAIresult created"
             return res
         catch lai_err
-            Lg.debug(locallog, "error: $lai_err")
+            @debug "error: $lai_err"
             #@show lai_err
             return NoLAIresult(lai_err)
         end
+        end #with_logger
     end
 
     function readrawjpg(imp::AbstractString, sl::LeafAreaIndex.SlopeInfo)
         #i = myid()# ID of current processor
-        #debug(setlog, "$i start reading $imp")
+        #@debug "$i start reading $imp")
         @assert imp != nothing
         @assert isfile(imp)
 
@@ -101,14 +103,14 @@ end
             imgblue = Images.blue.(img)
             gamma_decode!(imgblue)
         else
-            warn("image has unknown extension at $imp")
+            @warn("image has unknown extension at $imp")
             #warn(setlog,"$i image has unknown extension at $imp")
         end
-        #debug(setlog, "image read")
+        #@debug "image read")
 
         #@show "check overexposure"
         if sum(imgblue .== 1) > 0.005 * length(imgblue)
-            warn("Image overexposed: $imp")
+            @warn("Image overexposed: $imp")
             #warn(setlog, "$i Image overexposed: $imp")
         end
 
@@ -235,23 +237,23 @@ end
 
 function processcenterfile(dfcenter, height, width, logfile)
     writecsv(logfile, "") #clear logfile
-    setlog = Logger("setlog")
-    Logging.configure(setlog, filename=logfile, level=DEBUG)
+    # setlog = Logger("setlog")
+    # Logging.configure(setlog, filename=logfile, level=DEBUG)
     
-    debug(setlog, "Start calibrate center ")
+    # debug(setlog, "Start calibrate center ")
     calres = calibrate_center(dfcenter, height, width)
-    debug(setlog, "calibration result: $calres")
+    # debug(setlog, "calibration result: $calres")
     return (calres)
 end
 
 function processprojfile(dfproj, height, width, logfile)
-    writecsv(logfile, "") #clear logfile
-    setlog = Logger("setlog")
-    Logging.configure(setlog, filename=logfile, level=DEBUG)
+    # writecsv(logfile, "") #clear logfile
+    # setlog = Logger("setlog")
+    # Logging.configure(setlog, filename=logfile, level=DEBUG)
     
-    debug(setlog, "Start calibrate projection ")
+    # debug(setlog, "Start calibrate projection ")
     calres = calibrate_projfun(dfproj, height, width)
-    debug(setlog, "calibration result: $calres")
+    # debug(setlog, "calibration result: $calres")
     return (calres)
 end
 
@@ -261,16 +263,17 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     ## LOGGING
     # Create specific logger per set with debug info
     #writecsv(logfile, "") #clear logfile
-    setlog = Logger("setlog")
-    Logging.configure(setlog, filename=logfile, level=DEBUG)
-    
-    debug(setlog, "Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams")
-    debug(setlog, "received $N image paths")
+    logger_set_io = open(logfile, "w+")
+    logger_set = SimpleLogger(logger_set_io)
+    with_logger(logger_set) do
+
+    @debug "Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
+    @debug "received $N image paths"
     
     # create result dictionary
     result = Dict{String, Any}("success" => false)
     
-    debug(setlog,"create slope object")
+    @debug "create slope object"
     slope, slopeaspect = slopeparams
     if slope == zero(slope)
         myslope = LeafAreaIndex.NoSlope()
@@ -279,20 +282,20 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     end
 
     # load first image for image size, required for calibration
-    debug(setlog, "load first image for image size from $(imagepaths[1])")
+    @debug "load first image for image size from $(imagepaths[1])"
     imgsize = size(readrawjpg(imagepaths[1], myslope))
 
-    debug(setlog, "calibrate CameraLens or load previous calibration")
+    @debug "calibrate CameraLens or load previous calibration"
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, setlog)
 
-    debug(setlog ,"parallel process getLAI")
+    @debug "parallel process getLAI"
     #needed for anon functions in CameraLens 
     sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
     #remotecall_fetch(2, println, mycamlens)
 
     resultset = pmap(x->getLAI(x, mycamlens, myslope), imagepaths)
-    debug(setlog,"parallel process done")
+    @debug "parallel process done"
 
     # Create datafile with calculated values
     datalog = open(datafile, "w")
@@ -310,7 +313,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
-            debug(setlog, "found error in LAIresult $lai")
+            @debug "found error in LAIresult $lai")
             continue
         end
         overexp_str = @sprintf("%.7f", lai.overexposure)
@@ -323,18 +326,19 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
         result["binpath"][lai.imagepath] = lai.binpath
     end
     close(datalog)
-    debug(setlog,"closed $datafile")
+    @debug "closed $datafile"
     witherror && (return result)
 
     LAIs = Float64[r.LAI for r in resultset]
     result["LAI"] = median(LAIs)
     result["LAIsd"] = StatsBase.mad(LAIs)
-    result["success"] = true    
+    result["success"] = true
+    end #with_logger
     return(result)
 end
 
 function load_or_create_CameraLens(imgsize, lensparams, setlog)
-    debug(setlog, "start load_or_create_CameraLens")
+    @debug "start load_or_create_CameraLens"
     @assert isfile(CAMERALENSES)
 
     lenshash = string(hash( (imgsize,lensparams) ))  #create unique cameralens identifier
@@ -343,7 +347,7 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
     end
 
     if lenshash in past_hashes
-        debug(setlog, "previous calibration found for hash $lenshash")
+        @debug "previous calibration found for hash $lenshash"
         mycamlens = FileIO.load(CAMERALENSES, lenshash)
     else
         lensx, lensy, lensa, lensb, lensρ = lensparams
@@ -357,17 +361,17 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         # Fix likely lens coordinates mistake.
         if lensx > lensy # rowcoord > colcoord
             lensx, lensy = lensy, lensx
-            warn("lensx > lensy, probably a mistake, values have been swapped.")
-            warn(setlog,"lensx > lensy, probably a mistake, values have been swapped.")   
+            @warn("lensx > lensy, probably a mistake, values have been swapped.")
+            @warn(setlog,"lensx > lensy, probably a mistake, values have been swapped.")   
         end
 
-        debug(setlog,"calibrate new mycamlens")
+        @debug  "calibrate new mycamlens"
         mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
-        debug(setlog,"calibrated new mycamlens, now save to file")
+        @debug "calibrated new mycamlens, now save to file"
         JLD2.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
             file[lenshash] = mycamlens
         end
-        debug(setlog,"new mycamlens saved to file: $lenshash")
+        @debug "new mycamlens saved to file: $lenshash"
     end
     mycamlens
 end

@@ -7,7 +7,7 @@ addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
 using Logging
 
 # Setup Logging
-!isdir("logs") && mkdir("logs")
+isdir("logs") || mkdir("logs")
 logger_io = open(joinpath("logs", "logjulia.log"), "w+")
 logger = SimpleLogger(logger_io)
 global_logger(logger)
