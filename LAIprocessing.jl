@@ -34,7 +34,7 @@ end
     end
 
     function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens, 
-                    sl::LeafAreaIndex.SlopeInfo)
+                    slp::Union{LeafAreaIndex.SlopeParams, Missing})
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
 		id = myid() # ID of current processor for logging file
@@ -50,10 +50,10 @@ end
         try
             #@show ("start getLAI on $imagepath")
 			@debug "start processing on $imagepath"
-            img = readrawjpg(imagepath, sl)            
+            img = readrawjpg(imagepath, slp)            
             #@show "image read"
             @debug "image read"
-            polim = LeafAreaIndex.PolarImage(img, cl, sl)
+            polim = LeafAreaIndex.PolarImage(img, cl, slp)
             @debug "PolarImage created"
             thresh = LeafAreaIndex.threshold(polim)
 			#@show "thresh calculated"
@@ -88,7 +88,7 @@ end
         end #with_logger
     end
 
-    function readrawjpg(imp::AbstractString, sl::LeafAreaIndex.SlopeInfo)
+    function readrawjpg(imp::AbstractString, slp::Union{LeafAreaIndex.SlopeParams, Missing})
         #i = myid()# ID of current processor
         #@debug "$i start reading $imp")
         @assert imp != nothing
@@ -103,10 +103,9 @@ end
             imgblue = Images.blue.(img)
             gamma_decode!(imgblue)
         else
-            @warn("image has unknown extension at $imp")
-            #warn(setlog,"$i image has unknown extension at $imp")
+            @error("image has unknown extension at $imp")            
         end
-        #@debug "image read")
+        @debug "image read"
 
         #@show "check overexposure"
         if sum(imgblue .== 1) > 0.005 * length(imgblue)
@@ -116,14 +115,10 @@ end
 
         #rotate if in portrait mode
         if size(imgblue,1) > size(imgblue,2)
-            slope = LeafAreaIndex.params(sl)[1]
-            if slope != zero(slope)                
-                #warn(setlog, "$i image with slope in portrait mode, don't know which way to turn: $imp")
-                error("image with slope in portrait mode, don't know which way to turn: $imp")
-            end
-            imgblue = rotate90(imgblue) #default clockwise, could influence result due to lens center
-        end
-        #println("return rrj")
+            ismissing(slp) || @error("image with slope in portrait mode, don't know which way to turn: $imp")
+            @debug "will rotate image in portrait mode" imp
+            imgblue = rotate90(imgblue) #default clockwise, could influence result due to lens center            
+        end        
         return imgblue
     end
 
@@ -156,6 +151,7 @@ end
     end
     function cropbox(polim::LeafAreaIndex.PolarImage)
         radius = floor(Int, polim.cl.fθρ(pi/2))
+        # FIXME use CameraLensParams
         left, right = polim.cl.cj - radius, polim.cl.cj + radius
         down, up    = polim.cl.ci - radius, polim.cl.ci + radius
         # prevent out of bounds
@@ -276,25 +272,25 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     @debug "create slope object"
     slope, slopeaspect = slopeparams
     if slope == zero(slope)
-        myslope = LeafAreaIndex.NoSlope()
+        myslopeparams = missing
     else
-        myslope = Slope(slope/180*pi, slopeaspect/180*pi)
+        myslopeparams= SlopeParams(slope/180*pi, slopeaspect/180*pi)
     end
 
     # load first image for image size, required for calibration
     @debug "load first image for image size from $(imagepaths[1])"
-    imgsize = size(readrawjpg(imagepaths[1], myslope))
+    imgsize = size(readrawjpg(imagepaths[1], myslopeparams))
 
     @debug "calibrate CameraLens or load previous calibration"
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, setlog)
 
     @debug "parallel process getLAI"
     #needed for anon functions in CameraLens 
-    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslope=myslope)
+    sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslopeparams=myslopeparams)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
     #remotecall_fetch(2, println, mycamlens)
 
-    resultset = pmap(x->getLAI(x, mycamlens, myslope), imagepaths)
+    resultset = pmap(x->getLAI(x, mycamlens, myslopeparams), imagepaths)
     @debug "parallel process done"
 
     # Create datafile with calculated values
