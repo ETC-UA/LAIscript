@@ -2,6 +2,7 @@ using Logging, LeafAreaIndex, ParallelDataTransfer, CoordinateTransformations
 using PyCall
 # TODO use MicroLogging on julia 0.6 or Base.Logging on julia 1.0
 using Images #also imports FileIO for reading jpg
+using Statistics
 import StatsBase, JLD2, FileIO
 
 CAMERALENSES = "CameraLenses.jld2"
@@ -12,7 +13,7 @@ end
 
 @everywhere begin
     # Lg = Logging
-	
+
     abstract type LAIresultInfo; end
     "Convenience type to hold results from LAI calculation."
     struct LAIresult <: LAIresultInfo
@@ -33,7 +34,8 @@ end
         exception::Exception
     end
 
-    function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens, 
+    using LeafAreaIndex
+    function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens,
                     slp::Union{LeafAreaIndex.SlopeParams, Missing})
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
@@ -46,11 +48,11 @@ end
         logger_local_io = open(joinpath("logs", "locallog$(id).log"), "w+")
         logger_local = SimpleLogger(logger_local_io)
         with_logger(logger_local) do
-		
+
         try
             #@show ("start getLAI on $imagepath")
 			@debug "start processing on $imagepath"
-            img = readrawjpg(imagepath, slp)            
+            img = readrawjpg(imagepath, slp)
             #@show "image read"
             @debug "image read"
             polim = LeafAreaIndex.PolarImage(img, cl, slp)
@@ -71,10 +73,10 @@ end
             @debug "wrote bin and jpg"
             LAIe = LeafAreaIndex.inverse(polim, thresh)
             @debug "effective LAI: $LAIe"
-            clump = LeafAreaIndex.langxiang45(polim, thresh, 0, pi/2)
+            clump = LeafAreaIndex.langxiang(polim, thresh, 0, pi/2)
             @debug "clumping: $clump"
             LAI = LAIe / clump
-            @debug "LAI: $LAI" 
+            @debug "LAI: $LAI"
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
 			@debug "overexposure calculated"
 			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn)
@@ -97,13 +99,13 @@ end
         ext = lowercase(splitext(imp)[end])
 
         if ext in LeafAreaIndex.RAW_EXT
-            imgblue = LeafAreaIndex.rawblueread(imp)        
+            imgblue = LeafAreaIndex.rawblueread(imp)
         elseif ext in [".jpg",".jpeg", ".tiff"]
             img = FileIO.load(imp)
             imgblue = Images.blue.(img)
             gamma_decode!(imgblue)
         else
-            @error("image has unknown extension at $imp")            
+            @error("image has unknown extension at $imp")
         end
         @debug "image read"
 
@@ -117,15 +119,15 @@ end
         if size(imgblue,1) > size(imgblue,2)
             ismissing(slp) || @error("image with slope in portrait mode, don't know which way to turn: $imp")
             @debug "will rotate image in portrait mode" imp
-            imgblue = rotate90(imgblue) #default clockwise, could influence result due to lens center            
-        end        
+            imgblue = rotate90(imgblue) #default clockwise, could influence result due to lens center
+        end
         return imgblue
     end
 
     # Rotate sometimes because currently LeafAreaIndex expects landscape *in memory*.
-    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."    
+    "Rotates an image (or in general an `AbstractMatrix`) 90 degrees."
     function rotate90(img; clockwise=true)
-        transf = recenter(RotMatrix(ifelse(clockwise, 1, -1)*pi/2), center(img)) 
+        transf = recenter(RotMatrix(ifelse(clockwise, 1, -1)*pi/2), center(img))
         img = warp(img, transf)
         #fix for images.jl #717
         return parent(img)
@@ -142,18 +144,20 @@ end
     function write_bin_jpg(polim::LeafAreaIndex.PolarImage, thresh, imgfilepath)
         jpgfilepath, binfilepath = make_bin_jpg_paths(imgfilepath)
         left, right, down, up = cropbox(polim)
-        
         image = polim.img[down:up, left:right]
         Images.save(jpgfilepath, image)
         imgage_gray = Images.Gray.(image .> thresh)
-        Images.save(binfilepath, imgage_gray)
+        #Images.save(binfilepath, imgage_gray)
+        binfilepath = "TODO"
         return jpgfilepath, binfilepath
     end
     function cropbox(polim::LeafAreaIndex.PolarImage)
+        ci = polim.cl.params.lenscenter[1]
+        cj = polim.cl.params.lenscenter[2]
         radius = floor(Int, polim.cl.fθρ(pi/2))
         # FIXME use CameraLensParams
-        left, right = polim.cl.cj - radius, polim.cl.cj + radius
-        down, up    = polim.cl.ci - radius, polim.cl.ci + radius
+        left, right = cj - radius, cj + radius
+        down, up    = ci - radius, ci + radius
         # prevent out of bounds
         left, right  = max(1, left), min(size(polim.cl)[2], right)
         down, up     = max(1, down), min(size(polim.cl)[1], up)
@@ -194,26 +198,29 @@ end
         return csv
     end
 
-    PyCall.py"""
-    import exifread
+    #PyCall.py"""
+    #py = PyCall.pyimport("py")
+    #py"""
+    #import exifread
 
-    def exif(path):
-        tags = {}
-        with open(path, 'rb') as f:
-            tags = exifread.process_file(f, details=False)
-        kinds = ['EXIF ExposureTime', 'EXIF FNumber', 'EXIF ISOSpeedRatings', 'Image Orientation', 
-                'Image DateTime', "Image Make", "Image Model", "EXIF FocalLength" ]
+    #def exif(path):
+    #    tags = {}
+    #    with open(path, 'rb') as f:
+    #        tags = exifread.process_file(f, details=False)
+    #    kinds = ['EXIF ExposureTime', 'EXIF FNumber', 'EXIF ISOSpeedRatings', 'Image Orientation',
+    #            'Image DateTime', "Image Make", "Image Model", "EXIF FocalLength" ]
         # for kind in kinds:
         #     print(str(tags.get(kind)))
-        res = {k:str(v) for (k,v) in tags.items() if k in kinds}
-        return res
-    """
+    #    res = {k:str(v) for (k,v) in tags.items() if k in kinds}
+    #    return res
+    #"""
     function csv_exif(imgfilepath)
-        tags = PyCall.py"exif"(imgfilepath)
-        csv = "key, value\n "
-        for (k,v) in tags
-            csv *= "$k, $v\n "
-        end
+    #    tags = py"exif"(imgfilepath)
+    #    csv = "key, value\n "
+    csv = ""
+    #    for (k,v) in tags
+    #        csv *= "$k, $v\n "
+    #    end
         return csv
     end
     function csv_stats(polim::LeafAreaIndex.PolarImage)
@@ -235,7 +242,7 @@ function processcenterfile(dfcenter, height, width, logfile)
     writecsv(logfile, "") #clear logfile
     # setlog = Logger("setlog")
     # Logging.configure(setlog, filename=logfile, level=DEBUG)
-    
+
     # debug(setlog, "Start calibrate center ")
     calres = calibrate_center(dfcenter, height, width)
     # debug(setlog, "calibration result: $calres")
@@ -246,7 +253,7 @@ function processprojfile(dfproj, height, width, logfile)
     # writecsv(logfile, "") #clear logfile
     # setlog = Logger("setlog")
     # Logging.configure(setlog, filename=logfile, level=DEBUG)
-    
+
     # debug(setlog, "Start calibrate projection ")
     calres = calibrate_projfun(dfproj, height, width)
     # debug(setlog, "calibration result: $calres")
@@ -265,11 +272,11 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
 
     @debug "Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
     @debug "received $N image paths"
-    
+
     # create result dictionary
     result = Dict{String, Any}("success" => false)
-    
-    @debug "create slope object"
+
+    println( "create slope object")
     slope, slopeaspect = slopeparams
     if slope == zero(slope)
         myslopeparams = missing
@@ -278,20 +285,20 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     end
 
     # load first image for image size, required for calibration
-    @debug "load first image for image size from $(imagepaths[1])"
+    println( "load first image for image size from $(imagepaths[1])")
     imgsize = size(readrawjpg(imagepaths[1], myslopeparams))
 
-    @debug "calibrate CameraLens or load previous calibration"
-    mycamlens = load_or_create_CameraLens(imgsize, lensparams, setlog)
+    println( "calibrate CameraLens or load previous calibration")
+    mycamlens = load_or_create_CameraLens(imgsize, lensparams, logfile)
 
     @debug "parallel process getLAI"
-    #needed for anon functions in CameraLens 
+    #needed for anon functions in CameraLens
     sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslopeparams=myslopeparams)
-    @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams 
+    @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams
     #remotecall_fetch(2, println, mycamlens)
 
     resultset = pmap(x->getLAI(x, mycamlens, myslopeparams), imagepaths)
-    @debug "parallel process done"
+    @debug  "parallel process done"
 
     # Create datafile with calculated values
     datalog = open(datafile, "w")
@@ -309,10 +316,11 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
-            @debug "found error in LAIresult $lai")
+            @debug "found error in LAIresult $lai"
             continue
         end
-        overexp_str = @sprintf("%.7f", lai.overexposure)
+        #overexp_str = @sprintf("%.7f", lai.overexposure)
+        overexp_str = lai.overexposure
         write(datalog, "$(basename(lai.imagepath)), $(lai.LAI), $(lai.LAIe), $(lai.thresh), $(lai.clump), $(overexp_str)\n")
         result["csv_gapfraction"][lai.imagepath] = lai.csv_gapfraction
         result["csv_histogram"][lai.imagepath] = lai.csv_histogram
@@ -329,8 +337,9 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     result["LAI"] = median(LAIs)
     result["LAIsd"] = StatsBase.mad(LAIs)
     result["success"] = true
-    end #with_logger
-    return(result)
+    #end #with_logger
+    result
+end
 end
 
 function load_or_create_CameraLens(imgsize, lensparams, setlog)
@@ -349,7 +358,7 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         lensx, lensy, lensa, lensb, lensρ = lensparams
         # Generic functions can't serialize, so need anonymous function to save
         projfθρ = θ -> (lensa*θ + lensb*θ^2) * lensρ
-        invprojfρθ = ρ ->(-lensa + sqrt(lensa^2+4lensb*ρ/lensρ)) / 2lensb 
+        invprojfρθ = ρ ->(-lensa + sqrt(lensa^2+4lensb*ρ/lensρ)) / 2lensb
         lensb == zero(lensb) && (invprojfρθ = ρ -> ρ / (lensρ * lensa))
         @assert projfθρ(pi/2) > 2
         @assert projfθρ(pi/2) < maximum(imgsize)
@@ -358,11 +367,12 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
         if lensx > lensy # rowcoord > colcoord
             lensx, lensy = lensy, lensx
             @warn("lensx > lensy, probably a mistake, values have been swapped.")
-            @warn(setlog,"lensx > lensy, probably a mistake, values have been swapped.")   
+            @warn(setlog,"lensx > lensy, probably a mistake, values have been swapped.")
         end
 
-        @debug  "calibrate new mycamlens"
-        mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
+        @debug "calibrate new mycamlens"
+        #mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
+        mycamlens = CameraLens(imgsize,(lensx,lensy), lensρ, [lensa, lensb])
         @debug "calibrated new mycamlens, now save to file"
         JLD2.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
             file[lenshash] = mycamlens

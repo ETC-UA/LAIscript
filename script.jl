@@ -2,7 +2,7 @@ using Distributed
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
+#addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
 
 using Logging
 
@@ -31,7 +31,7 @@ include("LAIprocessing.jl")
 
 # convenience functions for quering the database
 function selectcolnames(cursor::PyObject, tablename)
-    sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$(tablename)'"
+    sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$tablename'"
     cex = cursor[:execute](sql)
     pytable = cex[:fetchall]()
     String[collect(obj)[1] for obj in pytable]
@@ -47,7 +47,7 @@ function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     res = map(collect, pytable)
     df = DataFrame()
     # convert string to Symbol for DataFrame indexing
-    colnames = Symbol[selectcolnames(cursor, tablename)...]
+    colnames = [Symbol(c) for c in selectcolnames(cursor, tablename)]
     for col in eachindex(colnames)
         colvals = [res[row][col] for row in eachindex(res)]
         df[colnames[col]] = colvals
@@ -68,13 +68,13 @@ function process_calibration(conn)
 
     cursor = conn[:cursor]()
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
-    
+
     size(cameraSetup, 1) != 0 || return
     setupID = cameraSetup[1, :ID]
     try
-        info("detected new processed=false in cameraSetup table")
-        
-        #setupID    = cameraSetup[1, :ID]        
+        println("detected new processed=false in cameraSetup table")
+
+        #setupID    = cameraSetup[1, :ID]
         pathCenter = cameraSetup[1, :pathCenter]
         pathProj   = cameraSetup[1, :pathProj]
         width      = cameraSetup[1, :width]
@@ -82,60 +82,60 @@ function process_calibration(conn)
 
         df = readtable(pathCenter, names=[:x, :y, :circle])
         lensx, lensy = processcenterfile(df, height, width, TEMPSETLOG)
-        info("result x: $lensx y:$lensy")
+        println("result x: $lensx y:$lensy")
         updatetable(conn, "cameraSetup", setupID, :x, lensx)
         updatetable(conn, "cameraSetup", setupID, :y, lensy)
 
         df = readtable(pathProj, names=[:cm, :px, :H, :pos])
         lensa, lensb = processprojfile(df, height, width, TEMPSETLOG)
-        info("result a: $lensa b:$lensb")
+        println("result a: $lensa b:$lensb")
         updatetable(conn, "cameraSetup", setupID, :a, lensa)
-        updatetable(conn, "cameraSetup", setupID, :b, lensb) 
+        updatetable(conn, "cameraSetup", setupID, :b, lensb)
 
         updatetable(conn, "cameraSetup", setupID, :processed, 1)
     catch y
-        err("Could not process center calibration: $setupID with error $y")
+        error("Could not process center calibration: $setupID with error $y")
     finally
-        updatetable(conn, "cameraSetup", setupID, :processed, 1)       
+        updatetable(conn, "cameraSetup", setupID, :processed, 1)
     end
 end
 
 function gettabledata(cursor, results)
 
-    debug("reading LAI_App database tables")
+    println("reading LAI_App database tables")
 
     plotSetID = results[1, :plotSetID];
-    info("plotSetID = $plotSetID")
+    println("plotSetID = $plotSetID")
     plotSet = selecttable(cursor, :plotSets, "ID = $plotSetID", true)
     if size(plotSet)[1] == 0
-        err("Could not find plotSetID $plotSetID from results table in plotSets table.")
+        error("Could not find plotSetID $plotSetID from results table in plotSets table.")
         set_processed()
         return
     end
 
     uploadSetID = plotSet[1, :uploadSetID]
-    info("uploadSetID = $uploadSetID")        
-    uploadSet = selecttable(cursor, :uploadSet, "ID = $uploadSetID", true)        
+    println("uploadSetID = $uploadSetID")
+    uploadSet = selecttable(cursor, :uploadSet, "ID = $uploadSetID", true)
     if size(uploadSet)[1] == 0
-        err("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
+        error("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
         set_processed()
         return
     end
 
     plotID = plotSet[1, :plotID]
-    info("plotID = $plotID")
+    println("plotID = $plotID")
     plot = selecttable(cursor, :plots, "ID = $plotID", true)
     if size(plot)[1] == 0
         err("Could not find plotID $plotID from plots table in uploadSet table.")
         set_processed()
         return
     end
-    
+
     camSetupID = uploadSet[1, :camSetupID]
-    info("camSetupID = $camSetupID")        
+    println("camSetupID = $camSetupID")
     cameraSetup = selecttable(cursor, :cameraSetup, "ID = $camSetupID", true)
     if size(cameraSetup)[1] == 0
-        err("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
+        error("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
         set_processed()
         return
     end
@@ -145,16 +145,16 @@ end
 
 
 function process_images(conn)
-
     cursor = conn[:cursor]()
+    println("get results with $conn en $cursor")
     results = selecttable(cursor, "results", "processed = 0", true)
-    
-    size(results)[1] != 0 || return        
+    size(results)[1] != 0 || return
     resultsID = results[1, :ID]
+    println("resultsID: $resultsID")
     set_processed() = updatetable(conn, "results", resultsID, :processed, 1)
     # TODO make macro for all these `if not found return` statements
     try
-        info("detected new processed=false in results table")
+        println("detected new processed=false in results table")
 
         uploadSet, uploadSetID, plot, plotSetID, cameraSetup = gettabledata(cursor, results)
 
@@ -164,32 +164,33 @@ function process_images(conn)
         lensb = cameraSetup[1, :b]
         lensρ = cameraSetup[1, :maxRadius]
         lensparams = (lensx, lensy, lensa, lensb, lensρ)
-        info("lens parameters: $lensparams")
+        println("lens parameters: $lensparams")
 
         slope = plot[1, :slope]
         slopeaspect = plot[1, :slopeAspect]
         slopeparams = (slope, slopeaspect)
-        info("slope parameters: $slopeparams")
+        println("slope parameters: $slopeparams")
 
         images = selecttable(cursor, :images, "plotSetID = $plotSetID", false)
         imagepaths = images[:path]
 
-        info("start images processing")
+        println("start images processing")
         success = false
         LAIres = Dict()
         try
-            LAIres = processimages(imagepaths,lensparams,slopeparams,TEMPSETLOG,DATALOG)                        
+            LAIres = processimages(imagepaths,lensparams,slopeparams,TEMPSETLOG,DATALOG)
+            println("na processimages")
             success = LAIres["success"]
-            info("uploadset $uploadSetID process completed with success: $success")            
+            println("uploadset $uploadSetID process completed with success: $success")
         catch y
-            err("Could not process uploadset: $uploadSetID with error $y")
+            error("Could not process uploadset: $uploadSetID with error $y")
         end
 
         updatetable(conn, "results", resultsID, :processed, 1)
         updatetable(conn, "results", resultsID, :succes, ifelse(success,1,0))
-        updatetable(conn, "results", resultsID, :resultLog, string(readstring(open(TEMPSETLOG))))
+        updatetable(conn, "results", resultsID, :resultLog, string(read(open(TEMPSETLOG))))
         datafile = open(DATALOG)
-        updatetable(conn, "results", resultsID, :data, readstring(datafile))
+        updatetable(conn, "results", resultsID, :data, read(datafile))
         close(datafile)
         # updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
@@ -197,9 +198,9 @@ function process_images(conn)
             LAIsd    = LAIres["LAIsd"]
             try
                 updatetable(conn, "results", resultsID, :LAI, LAIvalue)
-                info("added LAI to results table for ID $resultsID")
+                println("added LAI to results table for ID $resultsID")
                 updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
-                info("added LAI_SD to results table for ID $resultsID")
+                println("added LAI_SD to results table for ID $resultsID")
                 for (reskey, col) in [
                     ("csv_gapfraction", :gapfraction), ("csv_exif", :exif),
                     ("csv_histogram", :histogram), ("csv_stats", :stats),
@@ -207,15 +208,15 @@ function process_images(conn)
                     for (imgp, csv) in LAIres[reskey]
                         imgp in images[:path] || continue
                         imageID = images[:ID][images[:path].==imgp][1]
-                        updatetable(conn, "images", imageID , col, csv)        
+                        updatetable(conn, "images", imageID , col, csv)
                     end
                 end
             catch y
-                err("could not add LAI to results table, error: $y")
+                error("could not add LAI to results table, error: $y")
             end
         end
     catch y
-        err("caugth general error in interior loop: $y")
+        error("caugth general error in interior loop: $y")
     finally
         updatetable(conn, "results", resultsID, :processed, 1)
     end
@@ -226,12 +227,14 @@ end
 function mainloop(conn)
     println("Started Leaf Area Index Service")
     while true
-        try 
-            process_calibration(conn)
+        try
+            #process_calibration(conn)
             process_images(conn)
         catch y
-            err("caugth general error in interior loop: $y")
-        end 
+            error("caugth general error in interior loop: $y")
+            #error
+            #println("Fout: $y")
+        end
         sleep(1)
     end
 end
