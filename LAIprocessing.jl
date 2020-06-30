@@ -147,8 +147,7 @@ end
         image = polim.img[down:up, left:right]
         Images.save(jpgfilepath, image)
         imgage_gray = Images.Gray.(image .> thresh)
-        #Images.save(binfilepath, imgage_gray)
-        binfilepath = "TODO"
+        Images.save(binfilepath, imgage_gray)
         return jpgfilepath, binfilepath
     end
     function cropbox(polim::LeafAreaIndex.PolarImage)
@@ -270,13 +269,14 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     logger_set = SimpleLogger(logger_set_io)
     with_logger(logger_set) do
 
+    println("Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams")
     @debug "Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
     @debug "received $N image paths"
 
     # create result dictionary
     result = Dict{String, Any}("success" => false)
 
-    println( "create slope object")
+    @debug "create slope object"
     slope, slopeaspect = slopeparams
     if slope == zero(slope)
         myslopeparams = missing
@@ -285,10 +285,10 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     end
 
     # load first image for image size, required for calibration
-    println( "load first image for image size from $(imagepaths[1])")
+    @debug "load first image for image size from $(imagepaths[1])"
     imgsize = size(readrawjpg(imagepaths[1], myslopeparams))
 
-    println( "calibrate CameraLens or load previous calibration")
+    @debug "calibrate CameraLens or load previous calibration"
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, logfile)
 
     @debug "parallel process getLAI"
