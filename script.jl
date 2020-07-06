@@ -204,7 +204,9 @@ function process_images(conn)
                 for (reskey, col) in [
                     ("csv_gapfraction", :gapfraction), ("csv_exif", :exif),
                     ("csv_histogram", :histogram), ("csv_stats", :stats),
-                    ("jpgpath", :jpgPath), ("binpath", :binPath)]
+                    ("jpgpath", :jpgPath), ("binpath", :binPath), ("LAIs", :LAI),
+                    ("LAIe", :LAIe), ("threshold", :threshold), ("clumping", :clumping),
+                    ("overexposure", :overexposure)]
                     for (imgp, csv) in LAIres[reskey]
                         imgp in images[:path] || continue
                         imageID = images[:ID][images[:path].==imgp][1]

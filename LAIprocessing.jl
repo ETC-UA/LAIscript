@@ -313,6 +313,11 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     result["csv_stats"] = Dict{String, String}()
     result["jpgpath"] = Dict{String, String}()
     result["binpath"] = Dict{String, String}()
+    result["LAIs"] = Dict{String, Float64}()
+    result["LAIe"] = Dict{String, Float64}()
+    result["threshold"] = Dict{String, Float64}()
+    result["clumping"] = Dict{String, Float64}()
+    result["overexposure"] = Dict{String, Float64}()
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
@@ -328,6 +333,11 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
         result["csv_stats"][lai.imagepath] = lai.csv_stats
         result["jpgpath"][lai.imagepath] = lai.jpgpath
         result["binpath"][lai.imagepath] = lai.binpath
+        result["LAIs"][lai.imagepath] = lai.LAI
+        result["LAIe"][lai.imagepath] = lai.LAIe
+        result["threshold"][lai.imagepath] = lai.thresh
+        result["clumping"][lai.imagepath] = lai.clump
+        result["overexposure"][lai.imagepath] = overexp_str
     end
     close(datalog)
     @debug "closed $datafile"
