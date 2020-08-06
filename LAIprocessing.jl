@@ -35,6 +35,7 @@ end
     end
 
     using LeafAreaIndex
+    using Logging, Dates
     function getLAI(imagepath::AbstractString, cl::LeafAreaIndex.CameraLens,
                     slp::Union{LeafAreaIndex.SlopeParams, Missing})
         # This function gets executed in parallel, so need to set up new logger
@@ -45,49 +46,54 @@ end
         #locallogfile = baselog * string(myid()) * logext
         #writecsv(locallogfile, "") #clear logfile
         #println("csv written")
-        logger_local_io = open(joinpath("logs", "locallog$(id).log"), "w+")
-        logger_local = SimpleLogger(logger_local_io)
+        logger_local_io = open(joinpath("logs", "locallog$(id).log"), "a")
+        logger_local = SimpleLogger(logger_local_io, Logging.Debug)
         with_logger(logger_local) do
 
         try
             #@show ("start getLAI on $imagepath")
-			@debug "start processing on $imagepath"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start processing on $imagepath"
             img = readrawjpg(imagepath, slp)
             #@show "image read"
-            @debug "image read"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - image read"
             polim = LeafAreaIndex.PolarImage(img, cl, slp)
-            @debug "PolarImage created"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - PolarImage created"
             thresh = LeafAreaIndex.threshold(polim)
 			#@show "thresh calculated"
-			@debug "threshold calculated"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - threshold calculated"
             csv_gf = csv_gapfraction(polim, thresh)
 			#@show "csv_gapfraction calculated"
-            @debug "created csv_gapfraction"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_gapfraction"
 			csv_hist = csv_histogram(polim.img)
-			@debug "created csv_histogram"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_histogram"
             csv_ex = csv_exif(imagepath)
-			@debug "created csv_exif"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_exif"
             csv_st = csv_stats(polim)
-			@debug "created csv_stats"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_stats"
             jpgfn, binfn = write_bin_jpg(polim, thresh, imagepath)
-            @debug "wrote bin and jpg"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - wrote bin and jpg"
             LAIe = LeafAreaIndex.inverse(polim, thresh)
-            @debug "effective LAI: $LAIe"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - effective LAI: $LAIe"
             clump = LeafAreaIndex.langxiang(polim, thresh, 0, pi/2)
-            @debug "clumping: $clump"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - clumping: $clump"
             LAI = LAIe / clump
-            @debug "LAI: $LAI"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - LAI: $LAI"
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
-			@debug "overexposure calculated"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - overexposure calculated"
 			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn)
-			@debug "LAIresult created"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - LAIresult created"
+            flush(logger_local_io)
+            close(logger_local_io)
             return res
         catch lai_err
-            @debug "error: $lai_err"
-            #@show lai_err
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - error: $lai_err"
+            flush(logger_local_io)
+            close(logger_local_io)
             return NoLAIresult(lai_err)
         end
         end #with_logger
+
+        #close(logger_local_io)
     end
 
     function readrawjpg(imp::AbstractString, slp::Union{LeafAreaIndex.SlopeParams, Missing})
@@ -141,6 +147,7 @@ end
         end
     end
 
+using Images
     function write_bin_jpg(polim::LeafAreaIndex.PolarImage, thresh, imgfilepath)
         jpgfilepath, binfilepath = make_bin_jpg_paths(imgfilepath)
         left, right, down, up = cropbox(polim)
@@ -216,7 +223,7 @@ end
     function csv_exif(imgfilepath)
     #    tags = py"exif"(imgfilepath)
     #    csv = "key, value\n "
-    csv = ""
+    csv = "todo"
     #    for (k,v) in tags
     #        csv *= "$k, $v\n "
     #    end

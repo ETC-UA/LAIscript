@@ -2,13 +2,13 @@ using Distributed
 
 #addprocs before including LAIprocessing.jl !
 # 9 processors ideal because typical size of image set
-#addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
+addprocs(min(Base.Sys.CPU_THREADS, 9) - nprocs())
 
-using Logging
+using Logging, Dates
 
 # Setup Logging
 isdir("logs") || mkdir("logs")
-logger_io = open(joinpath("logs", "logjulia.log"), "w+")
+logger_io = open(joinpath("logs", "logjulia_$(Dates.format(Dates.now(), "dd-mm-yyyy_HHhMM")).log"), "w+")
 logger = SimpleLogger(logger_io)
 global_logger(logger)
 TEMPSETLOG = joinpath("logs", "tempsetlog.log")
@@ -32,18 +32,18 @@ include("LAIprocessing.jl")
 # convenience functions for quering the database
 function selectcolnames(cursor::PyObject, tablename)
     sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$tablename'"
-    cex = cursor[:execute](sql)
-    pytable = cex[:fetchall]()
+    cex = cursor.execute(sql)
+    pytable = cex.fetchall()
     String[collect(obj)[1] for obj in pytable]
 end
 function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     # if justone: only select the first valid row
     if justone
-        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor.execute("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
     else
-        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor.execute("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
     end
-    pytable = cex[:fetchall]()
+    pytable = cex.fetchall()
     res = map(collect, pytable)
     df = DataFrame()
     # convert string to Symbol for DataFrame indexing
@@ -55,10 +55,10 @@ function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     df
 end
 function updatetable(conn::PyObject, tablename, ID::Int, columnname::Symbol,newvalue)
-    cursor = conn[:cursor]()
+    cursor = conn.cursor()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
-    cex = cursor[:execute](sql)
-    conn[:commit]()
+    cex = cursor.execute(sql)
+    conn.commit()
     nothing
 end
 
@@ -66,7 +66,7 @@ end
 
 function process_calibration(conn)
 
-    cursor = conn[:cursor]()
+    cursor = conn.cursor()
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
 
     size(cameraSetup, 1) != 0 || return
@@ -145,7 +145,7 @@ end
 
 
 function process_images(conn)
-    cursor = conn[:cursor]()
+    cursor = conn.cursor()
     results = selecttable(cursor, "results", "processed = 0", true)
     size(results)[1] != 0 || return
     resultsID = results[1, :ID]
@@ -170,7 +170,7 @@ function process_images(conn)
         @info "slope parameters: $slopeparams"
 
         images = selecttable(cursor, :images, "plotSetID = $plotSetID", false)
-        imagepaths = images[:path]
+        imagepaths = images.path
 
         @info "start images processing"
         success = false
@@ -208,8 +208,8 @@ function process_images(conn)
                     ("LAIe", :LAIe), ("threshold", :threshold), ("clumping", :clumping),
                     ("overexposure", :overexposure)]
                     for (imgp, csv) in LAIres[reskey]
-                        imgp in images[:path] || continue
-                        imageID = images[:ID][images[:path].==imgp][1]
+                        imgp in images.path || continue
+                        imageID = images.ID[images.path.==imgp][1]
                         updatetable(conn, "images", imageID , col, csv)
                     end
                 end
