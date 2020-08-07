@@ -67,7 +67,7 @@ end
 			csv_hist = csv_histogram(polim.img)
 			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_histogram"
             csv_ex = csv_exif(imagepath)
-			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_exif"
+			#@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_exif"
             csv_st = csv_stats(polim)
 			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_stats"
             jpgfn, binfn = write_bin_jpg(polim, thresh, imagepath)
@@ -113,7 +113,7 @@ end
         else
             @error("image has unknown extension at $imp")
         end
-        @debug "image read"
+        @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - image read"
 
         #@show "check overexposure"
         if sum(imgblue .== 1) > 0.005 * length(imgblue)
@@ -124,7 +124,7 @@ end
         #rotate if in portrait mode
         if size(imgblue,1) > size(imgblue,2)
             ismissing(slp) || @error("image with slope in portrait mode, don't know which way to turn: $imp")
-            @debug "will rotate image in portrait mode" imp
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - will rotate image in portrait mode" imp
             imgblue = rotate90(imgblue) #default clockwise, could influence result due to lens center
         end
         return imgblue
@@ -273,17 +273,17 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     # Create specific logger per set with debug info
     #writecsv(logfile, "") #clear logfile
     logger_set_io = open(logfile, "w+")
-    logger_set = SimpleLogger(logger_set_io)
+    logger_set = SimpleLogger(logger_set_io, Logging.Debug)
     with_logger(logger_set) do
 
     println("Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams")
-    @debug "Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
-    @debug "received $N image paths"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - received $N image paths"
 
     # create result dictionary
     result = Dict{String, Any}("success" => false)
 
-    @debug "create slope object"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - create slope object"
     slope, slopeaspect = slopeparams
     if slope == zero(slope)
         myslopeparams = missing
@@ -292,20 +292,20 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     end
 
     # load first image for image size, required for calibration
-    @debug "load first image for image size from $(imagepaths[1])"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - load first image for image size from $(imagepaths[1])"
     imgsize = size(readrawjpg(imagepaths[1], myslopeparams))
 
-    @debug "calibrate CameraLens or load previous calibration"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - calibrate CameraLens or load previous calibration"
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, logfile)
 
-    @debug "parallel process getLAI"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - parallel process getLAI"
     #needed for anon functions in CameraLens
     sendto(procs(), lensparams=lensparams, mycamlens=mycamlens, myslopeparams=myslopeparams)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams
     #remotecall_fetch(2, println, mycamlens)
 
     resultset = pmap(x->getLAI(x, mycamlens, myslopeparams), imagepaths)
-    @debug  "parallel process done"
+    @debug  "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - parallel process done"
 
     # Create datafile with calculated values
     datalog = open(datafile, "w")
@@ -328,7 +328,7 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
-            @debug "found error in LAIresult $lai"
+            @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - found error in LAIresult $lai"
             continue
         end
         #overexp_str = @sprintf("%.7f", lai.overexposure)
@@ -347,20 +347,22 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
         result["overexposure"][lai.imagepath] = overexp_str
     end
     close(datalog)
-    @debug "closed $datafile"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - closed $datafile"
+    flush(logger_set_io)
     witherror && (return result)
 
     LAIs = Float64[r.LAI for r in resultset]
     result["LAI"] = median(LAIs)
-    result["LAIsd"] = StatsBase.mad(LAIs)
+    result["LAIsd"] = StatsBase.mad(LAIs,normalize=false)
     result["success"] = true
     #end #with_logger
+
     result
 end
 end
 
 function load_or_create_CameraLens(imgsize, lensparams, setlog)
-    @debug "start load_or_create_CameraLens"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start load_or_create_CameraLens"
     @assert isfile(CAMERALENSES)
 
     lenshash = string(hash( (imgsize,lensparams) ))  #create unique cameralens identifier
@@ -369,7 +371,7 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
     end
 
     if lenshash in past_hashes
-        @debug "previous calibration found for hash $lenshash"
+        @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - previous calibration found for hash $lenshash"
         mycamlens = FileIO.load(CAMERALENSES, lenshash)
     else
         lensx, lensy, lensa, lensb, lensρ = lensparams
@@ -387,14 +389,14 @@ function load_or_create_CameraLens(imgsize, lensparams, setlog)
             @warn(setlog,"lensx > lensy, probably a mistake, values have been swapped.")
         end
 
-        @debug "calibrate new mycamlens"
+        @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - calibrate new mycamlens"
         #mycamlens = CameraLens(imgsize...,lensx,lensy,projfθρ,invprojfρθ)
         mycamlens = CameraLens(imgsize,(lensx,lensy), lensρ, [lensa, lensb])
-        @debug "calibrated new mycamlens, now save to file"
+        @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - calibrated new mycamlens, now save to file"
         JLD2.jldopen(CAMERALENSES, "r+") do file #"r+" to append writing data
             file[lenshash] = mycamlens
         end
-        @debug "new mycamlens saved to file: $lenshash"
+        @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - new mycamlens saved to file: $lenshash"
     end
     mycamlens
 end

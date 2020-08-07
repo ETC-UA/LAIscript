@@ -8,8 +8,8 @@ using Logging, Dates
 
 # Setup Logging
 isdir("logs") || mkdir("logs")
-logger_io = open(joinpath("logs", "logjulia_$(Dates.format(Dates.now(), "dd-mm-yyyy_HHhMM")).log"), "w+")
-logger = SimpleLogger(logger_io)
+logger_io = open(joinpath("logs", "logjulia_$(Dates.format(Dates.now(), "dd-mm-yyyy_HHhMM")).log"), "a")
+logger = SimpleLogger(logger_io, Logging.Debug)
 global_logger(logger)
 TEMPSETLOG = joinpath("logs", "tempsetlog.log")
 DATALOG = joinpath("logs", "data.txt")
@@ -50,7 +50,7 @@ function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     colnames = [Symbol(c) for c in selectcolnames(cursor, tablename)]
     for col in eachindex(colnames)
         colvals = [res[row][col] for row in eachindex(res)]
-        df[colnames[col]] = colvals
+        df[!, colnames[col]] = colvals
     end
     df
 end
@@ -72,7 +72,7 @@ function process_calibration(conn)
     size(cameraSetup, 1) != 0 || return
     setupID = cameraSetup[1, :ID]
     try
-        @info "detected new processed=false in cameraSetup table"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - detected new processed=false in cameraSetup table"
 
         #setupID    = cameraSetup[1, :ID]
         pathCenter = cameraSetup[1, :pathCenter]
@@ -82,13 +82,13 @@ function process_calibration(conn)
 
         df = readtable(pathCenter, names=[:x, :y, :circle])
         lensx, lensy = processcenterfile(df, height, width, TEMPSETLOG)
-        @info "result x: $lensx y:$lensy"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - result x: $lensx y:$lensy"
         updatetable(conn, "cameraSetup", setupID, :x, lensx)
         updatetable(conn, "cameraSetup", setupID, :y, lensy)
 
         df = readtable(pathProj, names=[:cm, :px, :H, :pos])
         lensa, lensb = processprojfile(df, height, width, TEMPSETLOG)
-        @info "result a: $lensa b:$lensb"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - result a: $lensa b:$lensb"
         updatetable(conn, "cameraSetup", setupID, :a, lensa)
         updatetable(conn, "cameraSetup", setupID, :b, lensb)
 
@@ -102,10 +102,10 @@ end
 
 function gettabledata(cursor, results)
 
-    @debug "reading LAI_App database tables"
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - reading LAI_App database tables"
 
     plotSetID = results[1, :plotSetID];
-    @info "plotSetID = $plotSetID"
+    @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - plotSetID = $plotSetID"
     plotSet = selecttable(cursor, :plotSets, "ID = $plotSetID", true)
     if size(plotSet)[1] == 0
         error("Could not find plotSetID $plotSetID from results table in plotSets table.")
@@ -114,7 +114,7 @@ function gettabledata(cursor, results)
     end
 
     uploadSetID = plotSet[1, :uploadSetID]
-    @info "uploadSetID = $uploadSetID"
+    @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - uploadSetID = $uploadSetID"
     uploadSet = selecttable(cursor, :uploadSet, "ID = $uploadSetID", true)
     if size(uploadSet)[1] == 0
         error("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
@@ -123,7 +123,7 @@ function gettabledata(cursor, results)
     end
 
     plotID = plotSet[1, :plotID]
-    @info "plotID = $plotID"
+    @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - plotID = $plotID"
     plot = selecttable(cursor, :plots, "ID = $plotID", true)
     if size(plot)[1] == 0
         err("Could not find plotID $plotID from plots table in uploadSet table.")
@@ -132,7 +132,7 @@ function gettabledata(cursor, results)
     end
 
     camSetupID = uploadSet[1, :camSetupID]
-    @info "camSetupID = $camSetupID"
+    @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - camSetupID = $camSetupID"
     cameraSetup = selecttable(cursor, :cameraSetup, "ID = $camSetupID", true)
     if size(cameraSetup)[1] == 0
         error("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
@@ -152,7 +152,7 @@ function process_images(conn)
     set_processed() = updatetable(conn, "results", resultsID, :processed, 1)
     # TODO make macro for all these `if not found return` statements
     try
-        @info "detected new processed=false in results table"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - detected new processed=false in results table"
 
         uploadSet, uploadSetID, plot, plotSetID, cameraSetup = gettabledata(cursor, results)
 
@@ -162,25 +162,25 @@ function process_images(conn)
         lensb = cameraSetup[1, :b]
         lensρ = cameraSetup[1, :maxRadius]
         lensparams = (lensx, lensy, lensa, lensb, lensρ)
-        @info "lens parameters: $lensparams"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - lens parameters: $lensparams"
 
         slope = plot[1, :slope]
         slopeaspect = plot[1, :slopeAspect]
         slopeparams = (slope, slopeaspect)
-        @info "slope parameters: $slopeparams"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - slope parameters: $slopeparams"
 
         images = selecttable(cursor, :images, "plotSetID = $plotSetID", false)
         imagepaths = images.path
 
-        @info "start images processing"
+        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start images processing"
         success = false
         LAIres = Dict()
         try
             LAIres = processimages(imagepaths,lensparams,slopeparams,TEMPSETLOG,DATALOG)
             success = LAIres["success"]
-            @info "uploadset $uploadSetID process completed with success: $success"
+            @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - uploadset $uploadSetID process completed with success: $success"
         catch y
-            error("Could not process uploadset: $uploadSetID with error $y")
+            error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Could not process uploadset: $uploadSetID with error $y")
         end
 
         updatetable(conn, "results", resultsID, :processed, 1)
@@ -197,10 +197,10 @@ function process_images(conn)
             LAIsd    = LAIres["LAIsd"]
             try
                 updatetable(conn, "results", resultsID, :LAI, LAIvalue)
-                @info "added LAI to results table for ID $resultsID"
+                @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - added LAI to results table for ID $resultsID"
                 println("added LAI to results table for ID $resultsID")
                 updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
-                @info "added LAI_SD to results table for ID $resultsID"
+                @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - added LAI_SD to results table for ID $resultsID"
                 for (reskey, col) in [
                     ("csv_gapfraction", :gapfraction), ("csv_exif", :exif),
                     ("csv_histogram", :histogram), ("csv_stats", :stats),
@@ -214,11 +214,11 @@ function process_images(conn)
                     end
                 end
             catch y
-                error("could not add LAI to results table, error: $y")
+                error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - could not add LAI to results table, error: $y")
             end
         end
     catch y
-        error("caugth general error in interior loop: $y")
+        error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - caugth general error in interior loop: $y")
     finally
         updatetable(conn, "results", resultsID, :processed, 1)
     end
@@ -233,8 +233,9 @@ function mainloop(conn)
             #process_calibration(conn)
             process_images(conn)
         catch y
-            error("caugth general error in interior loop: $y")
+            error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - caugth general error in interior loop: $y")
         end
+        flush(logger_io)
         sleep(1)
     end
 end
