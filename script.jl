@@ -32,18 +32,18 @@ include("LAIprocessing.jl")
 # convenience functions for quering the database
 function selectcolnames(cursor::PyObject, tablename)
     sql = "SELECT column_name FROM information_schema.columns WHERE table_name = '$tablename'"
-    cex = cursor.execute(sql)
-    pytable = cex.fetchall()
+    cex = cursor[:execute](sql)
+    pytable = cex[:fetchall]()
     String[collect(obj)[1] for obj in pytable]
 end
 function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     # if justone: only select the first valid row
     if justone
-        cex = cursor.execute("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
     else
-        cex = cursor.execute("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
     end
-    pytable = cex.fetchall()
+    pytable = cex[:fetchall]()
     res = map(collect, pytable)
     df = DataFrame()
     # convert string to Symbol for DataFrame indexing
@@ -55,10 +55,10 @@ function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     df
 end
 function updatetable(conn::PyObject, tablename, ID::Int, columnname::Symbol,newvalue)
-    cursor = conn.cursor()
+    cursor = conn[:cursor]()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
-    cex = cursor.execute(sql)
-    conn.commit()
+    cex = cursor[:execute](sql)
+    conn[:commit]()
     nothing
 end
 
@@ -66,7 +66,7 @@ end
 
 function process_calibration(conn)
 
-    cursor = conn.cursor()
+    cursor = conn[:cursor]()
     cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
 
     size(cameraSetup, 1) != 0 || return
@@ -145,7 +145,7 @@ end
 
 
 function process_images(conn)
-    cursor = conn.cursor()
+    cursor = conn[:cursor]()
     results = selecttable(cursor, "results", "processed = 0", true)
     size(results)[1] != 0 || return
     resultsID = results[1, :ID]
@@ -182,7 +182,7 @@ function process_images(conn)
         catch y
             error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Could not process uploadset: $uploadSetID with error $y")
         end
-
+        println("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - uploadset $uploadSetID process completed with success: $success")
         updatetable(conn, "results", resultsID, :processed, 1)
         updatetable(conn, "results", resultsID, :succes, ifelse(success,1,0))
         updatetable(conn, "results", resultsID, :resultLog, string(read(open(TEMPSETLOG), String)))
@@ -190,7 +190,8 @@ function process_images(conn)
         updatetable(conn, "results", resultsID, :data, read(datafile, String))
         close(datafile)
         # todo
-        LAICOMMIT = "cbad6148-c3e0-5423-9767-73d18e64c37d"
+        #LAICOMMIT = "cbad6148-c3e0-5423-9767-73d18e64c37d"
+        LAICOMMIT = "5d043f449684340a392f5df405714dc1b2cbc09f"
         updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
             LAIvalue = LAIres["LAI"]

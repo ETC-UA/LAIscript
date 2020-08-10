@@ -105,7 +105,9 @@ end
         ext = lowercase(splitext(imp)[end])
 
         if ext in LeafAreaIndex.RAW_EXT
-            imgblue = LeafAreaIndex.rawblueread(imp)
+            #imgblue = LeafAreaIndex.rawblueread(imp)
+            img = LeafAreaIndex.rawblueread(imp)
+			imgblue = Images.blue.(img)
         elseif ext in [".jpg",".jpeg", ".tiff"]
             img = FileIO.load(imp)
             imgblue = Images.blue.(img)
