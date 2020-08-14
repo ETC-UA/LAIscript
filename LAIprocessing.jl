@@ -176,10 +176,11 @@ using Images
         imgbase, imgext = splitext(imgfile)
         bindir = joinpath(imgdir, "bin")
         isdir(bindir) || mkpath(bindir)
-        binfilepath = joinpath(bindir, imgbase*"_bin.png")
+        test =Dates.format(Dates.now(), "_yyyymmdd-HHhMM")
+        binfilepath = joinpath(bindir, imgbase*"$(test)_bin.png")
         jpgdir = joinpath(imgdir, "jpg")
         isdir(jpgdir) || mkpath(jpgdir)
-        jpgfilepath = joinpath(jpgdir, imgbase*"_jpg.jpg")
+        jpgfilepath = joinpath(jpgdir, imgbase*"$(test)_jpg.jpg")
         return jpgfilepath, binfilepath
     end
 
