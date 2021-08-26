@@ -40,7 +40,7 @@ end
                     slp::Union{LeafAreaIndex.SlopeParams, Missing})
         # This function gets executed in parallel, so need to set up new logger
         # on each processor.
-		id = myid() # ID of current processor for logging file
+        id = myid() # ID of current processor for logging file
         #@show "before logger"
         #baselog, logext = splitext(mainlogfile)
         #locallogfile = baselog * string(myid()) * logext
@@ -52,7 +52,8 @@ end
 
         try
             #@show ("start getLAI on $imagepath")
-			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start processing on $imagepath"
+			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start processing on $imagepath with slope params $slp"
+            println("start processing on $imagepath with slope params $slp")
             img = readrawjpg(imagepath, slp)
             #@show "image read"
             @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - image read"
@@ -269,8 +270,8 @@ function processprojfile(dfproj, height, width, logfile)
     return (calres)
 end
 
-function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
-    N = length(imagepaths)
+function processimages(images, lensparams, logfile, datafile)
+    N = nrow(images)
 
     ## LOGGING
     # Create specific logger per set with debug info
@@ -279,24 +280,25 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     logger_set = SimpleLogger(logger_set_io, Logging.Debug)
     with_logger(logger_set) do
 
-    println("Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams")
-    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Start `processimages` with lens parameters $lensparams and slope parameters $slopeparams"
+    println("Start `processimages` with lens parameters $lensparams" )
+    # and slope parameters $slopeparams")
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Start `processimages` with lens parameters $lensparams"# and slope parameters $slopeparams"
     @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - received $N image paths"
 
     # create result dictionary
     result = Dict{String, Any}("success" => false)
 
-    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - create slope object"
-    slope, slopeaspect = slopeparams
-    if slope == zero(slope)
+    slope = images[1,2]
+    slopeaspect = images[1,3]
+    if (slope == nothing || slope == zero(slope) )
         myslopeparams = missing
     else
         myslopeparams= SlopeParams(slope/180*pi, slopeaspect/180*pi)
     end
 
     # load first image for image size, required for calibration
-    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - load first image for image size from $(imagepaths[1])"
-    imgsize = size(readrawjpg(imagepaths[1], myslopeparams))
+    @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - load first image for image size from $(images[1, :path])"
+    imgsize = size(readrawjpg(images[1, 1], myslopeparams))
 
     @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - calibrate CameraLens or load previous calibration"
     mycamlens = load_or_create_CameraLens(imgsize, lensparams, logfile)
@@ -307,7 +309,19 @@ function processimages(imagepaths, lensparams, slopeparams, logfile, datafile)
     @everywhere lensx, lensy, lensa, lensb, lensρ = lensparams
     #remotecall_fetch(2, println, mycamlens)
 
-    resultset = pmap(x->getLAI(x, mycamlens, myslopeparams), imagepaths)
+    resultset = []
+    for x in eachrow(images)
+        path = x.path
+        slope = x.slope
+        slopeaspect = x.slopeAspect
+        if (slope == nothing || slope == zero(slope) )
+            myslopeparams = missing
+        else
+            myslopeparams= SlopeParams(slope/180*pi, slopeaspect/180*pi)
+        end
+        res = getLAI(path, mycamlens, myslopeparams)
+        push!(resultset,res)
+    end
     @debug  "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - parallel process done"
 
     # Create datafile with calculated values

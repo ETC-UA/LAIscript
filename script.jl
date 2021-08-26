@@ -54,6 +54,19 @@ function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
     end
     df
 end
+function selectimages(cursor::PyObject,where::String)
+    cex = cursor[:execute]("select path, plotLocations.slope, plotLocations.slopeAspect, images.ID from images left join [dbo].[plotLocations] on images.plotLocationID = [dbo].[plotLocations].ID WHERE $where  order by images.ID ASC")
+    pytable = cex[:fetchall]()
+    res = map(collect, pytable)
+    df = DataFrame()
+    # convert string to Symbol for DataFrame indexing
+    colnames = ["path","slope","slopeAspect", "ID"]
+    for col in eachindex(colnames)
+        colvals = [res[row][col] for row in eachindex(res)]
+        df[!, colnames[col]] = colvals
+    end
+    df
+end
 function updatetable(conn::PyObject, tablename, ID::Int, columnname::Symbol,newvalue)
     cursor = conn[:cursor]()
     sql = "UPDATE $tablename SET $columnname = '$(newvalue)' WHERE ID = $ID"
@@ -164,19 +177,12 @@ function process_images(conn)
         lensparams = (lensx, lensy, lensa, lensb, lensρ)
         @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - lens parameters: $lensparams"
 
-        slope = plot[1, :slope]
-        slopeaspect = plot[1, :slopeAspect]
-        slopeparams = (slope, slopeaspect)
-        @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - slope parameters: $slopeparams"
-
-        images = selecttable(cursor, :images, "plotSetID = $plotSetID", false)
-        imagepaths = images.path
-
+        images = selectimages(cursor, "plotSetID = $plotSetID")
         @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - start images processing"
         success = false
         LAIres = Dict()
         try
-            LAIres = processimages(imagepaths,lensparams,slopeparams,TEMPSETLOG,DATALOG)
+            LAIres = processimages(images,lensparams,TEMPSETLOG,DATALOG)
             success = LAIres["success"]
             @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - uploadset $uploadSetID process completed with success: $success"
         catch y
@@ -190,7 +196,6 @@ function process_images(conn)
         updatetable(conn, "results", resultsID, :data, read(datafile, String))
         close(datafile)
         # todo
-        #LAICOMMIT = "cbad6148-c3e0-5423-9767-73d18e64c37d"
         LAICOMMIT = "5d043f449684340a392f5df405714dc1b2cbc09f"
         updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
@@ -213,6 +218,13 @@ function process_images(conn)
                         imageID = images.ID[images.path.==imgp][1]
                         updatetable(conn, "images", imageID , col, csv)
                     end
+                end
+                for im in eachrow(images)
+                    imID = im.ID
+                    slope = im.slope
+                    slopeaspect = im.slopeAspect
+                    updatetable(conn, "images", imID , :slope, slope)
+                    updatetable(conn, "images", imID , :slopeAspect, slopeaspect)
                 end
             catch y
                 error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - could not add LAI to results table, error: $y")
