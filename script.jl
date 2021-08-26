@@ -223,8 +223,13 @@ function process_images(conn)
                     imID = im.ID
                     slope = im.slope
                     slopeaspect = im.slopeAspect
-                    updatetable(conn, "images", imID , :slope, slope)
-                    updatetable(conn, "images", imID , :slopeAspect, slopeaspect)
+                    if (slope == nothing || slope == zero(slope) )
+                        updatetable(conn, "images", imID , :slope, 0)
+                        updatetable(conn, "images", imID , :slopeAspect, 360)
+                    else                        
+                        updatetable(conn, "images", imID , :slope, slope)
+                        updatetable(conn, "images", imID , :slopeAspect, slopeaspect)
+                    end
                 end
             catch y
                 error("$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - could not add LAI to results table, error: $y")
