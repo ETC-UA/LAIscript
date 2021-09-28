@@ -36,12 +36,12 @@ function selectcolnames(cursor::PyObject, tablename)
     pytable = cex[:fetchall]()
     String[collect(obj)[1] for obj in pytable]
 end
-function selecttable(cursor::PyObject, tablename, where::String, justone::Bool)
+function selecttable(cursor::PyObject, tablename, where::String, justone::Bool, ascdesc::String)
     # if justone: only select the first valid row
     if justone
-        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT top 1 * FROM $tablename WHERE $where ORDER BY id $ascdesc")
     else
-        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id ASC")
+        cex = cursor[:execute]("SELECT * FROM $tablename WHERE $where ORDER BY id $ascdesc")
     end
     pytable = cex[:fetchall]()
     res = map(collect, pytable)
@@ -80,7 +80,7 @@ end
 function process_calibration(conn)
 
     cursor = conn[:cursor]()
-    cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true)
+    cameraSetup = selecttable(cursor, :cameraSetup, " processed = 0 and pathCenter is not null ", true, "ASC")
 
     size(cameraSetup, 1) != 0 || return
     setupID = cameraSetup[1, :ID]
@@ -119,7 +119,7 @@ function gettabledata(cursor, results)
 
     plotSetID = results[1, :plotSetID];
     @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - plotSetID = $plotSetID"
-    plotSet = selecttable(cursor, :plotSets, "ID = $plotSetID", true)
+    plotSet = selecttable(cursor, :plotSets, "ID = $plotSetID", true, "ASC")
     if size(plotSet)[1] == 0
         error("Could not find plotSetID $plotSetID from results table in plotSets table.")
         set_processed()
@@ -128,7 +128,7 @@ function gettabledata(cursor, results)
 
     uploadSetID = plotSet[1, :uploadSetID]
     @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - uploadSetID = $uploadSetID"
-    uploadSet = selecttable(cursor, :uploadSet, "ID = $uploadSetID", true)
+    uploadSet = selecttable(cursor, :uploadSet, "ID = $uploadSetID", true, "ASC")
     if size(uploadSet)[1] == 0
         error("Could not find uploadSetID $uploadSetID from results table in uploadSet table.")
         set_processed()
@@ -137,7 +137,7 @@ function gettabledata(cursor, results)
 
     plotID = plotSet[1, :plotID]
     @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - plotID = $plotID"
-    plot = selecttable(cursor, :plots, "ID = $plotID", true)
+    plot = selecttable(cursor, :plots, "ID = $plotID", true, "ASC")
     if size(plot)[1] == 0
         err("Could not find plotID $plotID from plots table in uploadSet table.")
         set_processed()
@@ -146,7 +146,7 @@ function gettabledata(cursor, results)
 
     camSetupID = uploadSet[1, :camSetupID]
     @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - camSetupID = $camSetupID"
-    cameraSetup = selecttable(cursor, :cameraSetup, "ID = $camSetupID", true)
+    cameraSetup = selecttable(cursor, :cameraSetup, "ID = $camSetupID", true,"ASC")
     if size(cameraSetup)[1] == 0
         error("Could not find camSetupID $camSetupID from uploadSet table in cameraSetup table.")
         set_processed()
@@ -159,7 +159,7 @@ end
 
 function process_images(conn)
     cursor = conn[:cursor]()
-    results = selecttable(cursor, "results", "processed = 0", true)
+    results = selecttable(cursor, "results", "processed = 0", true,"DESC")
     size(results)[1] != 0 || return
     resultsID = results[1, :ID]
     set_processed() = updatetable(conn, "results", resultsID, :processed, 1)
@@ -196,27 +196,34 @@ function process_images(conn)
         updatetable(conn, "results", resultsID, :data, read(datafile, String))
         close(datafile)
         # todo
-        LAICOMMIT = "5d043f449684340a392f5df405714dc1b2cbc09f"
+        LAICOMMIT = "739b1af9f496b6fd919ee09088e5210287cd9e56"
         updatetable(conn, "results", resultsID, :scriptVersion, LAICOMMIT)
         if success
             LAIvalue = LAIres["LAI"]
             LAIsd    = LAIres["LAIsd"]
             try
-                updatetable(conn, "results", resultsID, :LAI, LAIvalue)
+                println("LAIvalue: $LAIvalue")
+                if !(isnan(LAIvalue))
+                    updatetable(conn, "results", resultsID, :LAI, LAIvalue)
+                end
                 @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - added LAI to results table for ID $resultsID"
                 println("added LAI to results table for ID $resultsID")
-                updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
+                if !(isnan(LAIsd))
+                    updatetable(conn, "results", resultsID, :LAI_SD, LAIsd)
+                end
                 @info "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - added LAI_SD to results table for ID $resultsID"
                 for (reskey, col) in [
                     ("csv_gapfraction", :gapfraction), ("csv_exif", :exif),
                     ("csv_histogram", :histogram), ("csv_stats", :stats),
                     ("jpgpath", :jpgPath), ("binpath", :binPath), ("LAIs", :LAI),
                     ("LAIe", :LAIe), ("threshold", :threshold), ("clumping", :clumping),
-                    ("overexposure", :overexposure)]
+                    ("overexposure", :overexposure),("ALIA", :ALIA)]
                     for (imgp, csv) in LAIres[reskey]
                         imgp in images.path || continue
                         imageID = images.ID[images.path.==imgp][1]
-                        updatetable(conn, "images", imageID , col, csv)
+                        if (!( col == :LAI && isnan(csv)) && !( col == :LAIe && isnan(csv)))
+                            updatetable(conn, "images", imageID , col, csv)
+                        end
                     end
                 end
                 for im in eachrow(images)
@@ -226,7 +233,7 @@ function process_images(conn)
                     if (slope == nothing || slope == zero(slope) )
                         updatetable(conn, "images", imID , :slope, 0)
                         updatetable(conn, "images", imID , :slopeAspect, 360)
-                    else                        
+                    else
                         updatetable(conn, "images", imID , :slope, slope)
                         updatetable(conn, "images", imID , :slopeAspect, slopeaspect)
                     end

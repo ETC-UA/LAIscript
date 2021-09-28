@@ -29,6 +29,7 @@ end
         csv_stats::AbstractString
         jpgpath::AbstractString
         binpath::AbstractString
+        ALIA::Float64
     end
     struct NoLAIresult <: LAIresultInfo
         exception::Exception
@@ -73,7 +74,7 @@ end
 			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - created csv_stats"
             jpgfn, binfn = write_bin_jpg(polim, thresh, imagepath)
             @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - wrote bin and jpg"
-            LAIe = LeafAreaIndex.inverse(polim, thresh)
+            LAIe, ALIA = LeafAreaIndex.inverse(polim, thresh)
             @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - effective LAI: $LAIe"
             clump = LeafAreaIndex.langxiang(polim, thresh, 0, pi/2)
             @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - clumping: $clump"
@@ -81,7 +82,7 @@ end
             @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - LAI: $LAI"
             overexposure = sum(img .== 1) / (pi * cl.fθρ(pi/2)^2)
 			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - overexposure calculated"
-			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn)
+			res = LAIresult(imagepath, LAI, LAIe, thresh, clump, overexposure, csv_gf, csv_hist, csv_ex, csv_st, jpgfn, binfn, ALIA)
 			@debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - LAIresult created"
             flush(logger_local_io)
             close(logger_local_io)
@@ -284,7 +285,7 @@ function processimages(images, lensparams, logfile, datafile)
     # and slope parameters $slopeparams")
     @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - Start `processimages` with lens parameters $lensparams"# and slope parameters $slopeparams"
     @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - received $N image paths"
-
+println(images)
     # create result dictionary
     result = Dict{String, Any}("success" => false)
 
@@ -342,6 +343,7 @@ function processimages(images, lensparams, logfile, datafile)
     result["threshold"] = Dict{String, Float64}()
     result["clumping"] = Dict{String, Float64}()
     result["overexposure"] = Dict{String, Float64}()
+    result["ALIA"] = Dict{String, Float64}()
     for lai in resultset
         if !isa(lai, LAIresult)
             witherror = true
@@ -362,6 +364,7 @@ function processimages(images, lensparams, logfile, datafile)
         result["threshold"][lai.imagepath] = lai.thresh
         result["clumping"][lai.imagepath] = lai.clump
         result["overexposure"][lai.imagepath] = overexp_str
+        result["ALIA"][lai.imagepath] = lai.ALIA
     end
     close(datalog)
     @debug "$(Dates.format(Dates.now(), "dd u yyyy HH:MM:SS")) - closed $datafile"
